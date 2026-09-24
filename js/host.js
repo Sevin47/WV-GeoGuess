@@ -594,8 +594,17 @@ async function start() {
     $("start").disabled = true;
     $("setup-error").textContent = "";
     try {
-        rounds = await backend.getLandmarks(); // AGOL: triggers the sign-in dialog
-        if (!rounds.length) throw new Error("The landmarks layer has no rounds yet.");
+        // AGOL: this triggers the sign-in dialog. Only landmarks with a
+        // round_order are played live; the rest are the solo-mode pool.
+        const all = await backend.getLandmarks();
+        rounds = all.filter((r) => r.roundOrder >= 1);
+        if (!rounds.length) {
+            throw new Error(
+                all.length
+                    ? `${all.length} landmarks are loaded, but none has a round_order yet. Set round_order 1, 2, … (and set_name) on the ones to play live.`
+                    : "The landmarks layer has no rounds yet."
+            );
+        }
         state = await backend.getState(sid);
         const resumed = !!state;
         if (!state) state = await backend.createSession(sid, { roundTotal: rounds.length });

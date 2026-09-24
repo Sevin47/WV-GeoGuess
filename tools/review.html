@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>WV GeoGuess — Photo review</title>
+        <!--
+            DEV TOOL for the street-image pipeline (scripts/street_images.py).
+            Serve with `python scripts/serve.py` — decisions are saved to
+            work/review.json through that server (local only, git-ignored).
+
+            Keys:  ← / →  previous / next     K  keep
+                   P  people/plates visible   B  blurry/dark/obstructed
+                   N  no clues (too generic)  C  coordinates look wrong
+                   U  undo decision           F  show unreviewed only
+        -->
+        <style>
+            * { box-sizing: border-box; }
+            body { margin: 0; font: 15px/1.4 system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
+            header { position: sticky; top: 0; z-index: 2; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: #002855; }
+            header h1 { font-size: 18px; margin: 0; }
+            .counts span { margin-right: 12px; }
+            .counts b { color: #eaaa00; }
+            main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; padding: 16px; }
+            .viewer img.photo { width: 100%; border-radius: 8px; display: block; background: #000; }
+            .viewer .cropline { position: relative; }
+            .viewer .cropline::after { content: ""; position: absolute; left: 0; right: 0; bottom: var(--crop, 0); border-top: 3px dashed #f87171; }
+            .viewer .strip { width: 100%; margin-top: 8px; border-radius: 6px; display: block; }
+            aside { background: #1e293b; border-radius: 10px; padding: 14px; align-self: start; position: sticky; top: 64px; }
+            aside h2 { margin: 0 0 4px; font-size: 18px; }
+            .meta { color: #94a3b8; font-size: 13px; }
+            .coords { font: 600 18px ui-monospace, monospace; margin: 8px 0; }
+            .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+            .badge.warn { background: #b45309; color: #fff; }
+            .badge.ok { background: #15803d; color: #fff; }
+            .decision { margin: 10px 0; font-weight: 700; }
+            .decision.keep { color: #4ade80; }
+            .decision.reject { color: #f87171; }
+            .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+            button { font: inherit; padding: 10px; border-radius: 8px; border: 0; cursor: pointer; background: #334155; color: #fff; }
+            button.keep { background: #15803d; grid-column: span 2; font-weight: 700; }
+            button:hover { filter: brightness(1.15); }
+            .nav { display: flex; gap: 8px; margin-top: 10px; }
+            .nav button { flex: 1; }
+            .save { font-size: 12px; color: #94a3b8; margin-top: 10px; min-height: 1.2em; }
+            .save.err { color: #fca5a5; }
+            a { color: #93c5fd; }
+            .filmstrip { grid-column: 1 / -1; display: flex; gap: 4px; flex-wrap: wrap; }
+            .filmstrip img { width: 72px; height: 40px; object-fit: cover; border-radius: 3px; cursor: pointer; opacity: 0.55; outline: 2px solid transparent; }
+            .filmstrip img.keep { outline-color: #4ade80; opacity: 1; }
+            .filmstrip img.reject { outline-color: #f87171; opacity: 0.3; }
+            .filmstrip img.current { outline-color: #eaaa00; opacity: 1; }
+            @media (max-width: 900px) { main { grid-template-columns: 1fr; } aside { position: static; } }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1>Photo review</h1>
+            <div class="counts" id="counts"></div>
+            <label><input type="checkbox" id="only-unreviewed" /> Unreviewed only (F)</label>
+        </header>
+        <main>
+            <section class="viewer">
+                <div class="cropline" id="cropline"><img class="photo" id="photo" alt="Candidate photo" /></div>
+                <img class="strip" id="strip" alt="Original dashcam text strip (for checking the coordinates)" hidden />
+            </section>
+            <aside>
+                <h2 id="title">Loading…</h2>
+                <div class="meta" id="meta"></div>
+                <div class="coords" id="coords"></div>
+                <div id="badges"></div>
+                <div class="decision" id="decision"></div>
+                <div class="buttons">
+                    <button class="keep" data-d="keep">Keep (K)</button>
+                    <button data-d="people">People / plates (P)</button>
+                    <button data-d="blurry">Blurry / dark (B)</button>
+                    <button data-d="noclues">No clues (N)</button>
+                    <button data-d="coords">Wrong coords (C)</button>
+                </div>
+                <div class="nav">
+                    <button id="prev">← Prev</button>
+                    <button id="undo">Undo (U)</button>
+                    <button id="next">Next →</button>
+                </div>
+                <p class="meta">The red dashed line marks the crop: everything below it (the dashcam's text strip) is removed before the photo is used.</p>
+                <div class="save" id="save"></div>
+            </aside>
+            <div class="filmstrip" id="filmstrip"></div>
+        </main>
+
+        <script type="module">
+            const $ = (id) => document.getElementById(id);
+            const REASONS = { people: "people/plates visible", blurry: "blurry/dark", noclues: "no clues", coords: "wrong coordinates" };
+
+            const cands = await fetch("../work/candidates.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : []));
+            let review = await fetch("../work/review.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : {}));
+            let i = cands.findIndex((c) => !review[c.id]);
+            if (i < 0) i = 0;
+
+            function visible() {
+                return $("only-unreviewed").checked ? cands.filter((c) => !review[c.id]) : cands;
+            }
+
+            function render() {
+                const list = visible();
+                const kept = Object.values(review).filter((r) => r.decision === "keep").length;
+                const rejected = Object.values(review).filter((r) => r.decision === "reject").length;
+                $("counts").innerHTML = "";
+                for (const [label, n] of [["kept", kept], ["rejected", rejected], ["left", cands.length - kept - rejected], ["total", cands.length]]) {
+                    const s = document.createElement("span");
+                    s.append(`${label} `, Object.assign(document.createElement("b"), { textContent: n }));
+                    $("counts").append(s);
+                }
+                if (!cands.length) {
+                    $("title").textContent = "No candidates yet — run scripts/street_images.py sample …";
+                    return;
+                }
+                const c = cands[i];
+                $("photo").src = `../work/${c.file}`;
+                $("cropline").style.setProperty("--crop", `${(c.cropBottom || 0) * 100}%`);
+                $("strip").hidden = !c.strip;
+                if (c.strip) $("strip").src = `../work/${c.strip}`;
+                $("title").textContent = c.name;
+                $("meta").textContent = `${i + 1} of ${cands.length} · ${c.source} · ${c.captured || "date unknown"} · ${c.credit}`;
+                $("coords").textContent = `${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`;
+                const badges = [];
+                if (c.source === "wvdot") {
+                    badges.push(
+                        c.votes >= 2
+                            ? ["ok", `OCR agreed ${c.votes}/${c.reads}`]
+                            : c.neighborConfirmed
+                              ? ["ok", "Confirmed by the next frame"]
+                              : ["warn", `Check digits against the strip (OCR ${c.votes}/${c.reads})`]
+                    );
+                }
+                $("badges").replaceChildren(
+                    ...badges.map(([cls, text]) => Object.assign(document.createElement("span"), { className: `badge ${cls}`, textContent: text })),
+                    document.createElement("br"),
+                    Object.assign(document.createElement("a"), {
+                        href: `https://www.openstreetmap.org/?mlat=${c.lat}&mlon=${c.lon}#map=15/${c.lat}/${c.lon}`,
+                        target: "_blank",
+                        rel: "noopener",
+                        textContent: "Check location on OpenStreetMap ↗",
+                    })
+                );
+                const r = review[c.id];
+                $("decision").className = `decision ${r?.decision || ""}`;
+                $("decision").textContent = r ? (r.decision === "keep" ? "✓ Kept" : `✗ Rejected: ${REASONS[r.reason] || r.reason}`) : "Not reviewed";
+
+                $("filmstrip").replaceChildren(
+                    ...list.map((x) => {
+                        const img = document.createElement("img");
+                        img.src = `../work/${x.file}`;
+                        img.loading = "lazy";
+                        img.alt = x.name;
+                        img.className = [review[x.id]?.decision, x.id === c.id ? "current" : ""].filter(Boolean).join(" ");
+                        img.addEventListener("click", () => {
+                            i = cands.indexOf(x);
+                            render();
+                        });
+                        return img;
+                    })
+                );
+            }
+
+            let saveTimer = null;
+            function save() {
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(async () => {
+                    try {
+                        const res = await fetch("../work/review.json", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(review),
+                        });
+                        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+                        $("save").className = "save";
+                        $("save").textContent = `Saved ${new Date().toLocaleTimeString()}`;
+                    } catch (err) {
+                        $("save").className = "save err";
+                        $("save").textContent = `Not saved (${err.message}). Is scripts/serve.py running?`;
+                    }
+                }, 300);
+            }
+
+            function step(delta) {
+                const list = visible();
+                if (!list.length) return;
+                const pos = list.indexOf(cands[i]);
+                const next = list[Math.min(list.length - 1, Math.max(0, (pos < 0 ? 0 : pos) + delta))];
+                i = cands.indexOf(next);
+                render();
+            }
+
+            function decide(d) {
+                const c = cands[i];
+                review[c.id] = d === "keep" ? { decision: "keep" } : { decision: "reject", reason: d };
+                save();
+                if ($("only-unreviewed").checked) {
+                    const next = cands.find((x, k) => k > i && !review[x.id]) || cands.find((x) => !review[x.id]);
+                    if (next) i = cands.indexOf(next);
+                    render();
+                } else step(1);
+            }
+
+            document.querySelectorAll("[data-d]").forEach((b) => b.addEventListener("click", () => decide(b.dataset.d)));
+            $("prev").addEventListener("click", () => step(-1));
+            $("next").addEventListener("click", () => step(1));
+            $("undo").addEventListener("click", () => {
+                delete review[cands[i].id];
+                save();
+                render();
+            });
+            $("only-unreviewed").addEventListener("change", render);
+            window.addEventListener("keydown", (e) => {
+                const k = e.key.toLowerCase();
+                const map = { k: "keep", p: "people", b: "blurry", n: "noclues", c: "coords" };
+                if (map[k]) decide(map[k]);
+                else if (e.key === "ArrowRight") step(1);
+                else if (e.key === "ArrowLeft") step(-1);
+                else if (k === "u") $("undo").click();
+                else if (k === "f") {
+                    $("only-unreviewed").checked = !$("only-unreviewed").checked;
+                    render();
+                }
+            });
+            render();
+        </script>
+    </body>
+</html>

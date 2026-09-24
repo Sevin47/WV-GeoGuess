@@ -23,3 +23,6 @@ dist/
 __pycache__/
 *.pyc
 .venv/
+
+# --- Content pipeline (candidates, review decisions, PRIVATE answers) ---
+work/
