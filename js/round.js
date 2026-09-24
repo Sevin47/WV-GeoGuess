@@ -13,7 +13,7 @@
  *     answer:  { name, funFact, credit, lon, lat },    // lon/lat = centroid
  *     results: { <tag>: [points, miles, roundRank] },  // one per counted guess
  *     count:   42,                                     // guesses counted
- *     top:     [[nickname, points, miles], ...]        // best 5 this round
+ *     top:     [[tag, nickname, points, miles], ...]   // best 5 this round
  *   }
  *
  *   leaderboard = {
@@ -169,7 +169,7 @@ export function scoreRound({
         },
         results,
         count: scored.length,
-        top: scored.slice(0, topN).map((s) => [shownName(s.tag, s.nickname), s.points, s.miles]),
+        top: scored.slice(0, topN).map((s) => [s.tag, shownName(s.tag, s.nickname), s.points, s.miles]),
     };
 
     const leaderboard = {
@@ -182,6 +182,12 @@ export function scoreRound({
 }
 
 const round6 = (n) => Math.round(n * 1e6) / 1e6;
+
+/** Hide a player's name in a reveal's top list (for hiding mid-reveal). */
+export function hideNameInReveal(reveal, tag) {
+    if (!reveal?.top) return reveal;
+    return { ...reveal, top: reveal.top.map((t) => (t[0] === tag ? [t[0], HIDDEN_NAME, t[2], t[3]] : t)) };
+}
 
 /** Hide (or unhide) a player's name on the public leaderboard. */
 export function setNameHidden(leaderboard, tag, hide = true) {

@@ -267,6 +267,64 @@ venue test.
 
 ---
 
+## 4e. Phase 5: the host page
+
+| File | What it is |
+|---|---|
+| `host.html`, `css/host.css`, `js/host.js` | Projector page. Sized in vw/vh and designed at 1920×1080. Screens: setup/sign-in, lobby (QR + URL), round (photo, timer, "N guesses in", mini QR), reveal (map + closest list), leaderboard (top 10), final (champion). |
+
+**How it runs**
+- **Source of truth.** The host keeps its own copy of the state and writes changes; it never polls. Its
+  timers (auto-lock, the "N guesses in" count every 2 s) keep running while the tab is hidden behind the
+  slides.
+- **Flow.** lobby → guessing → (timer or L) locked → (→ or R) reveal → next round in the same set. At
+  the end of a set (a `set_name` change) it goes to the leaderboard, then an intermission lobby with the
+  QR code again, then the next set. When no rounds are left it goes to final.
+- **Controls.**
+  - Space, →, PageDown, or Enter: next
+  - L: lock. R: reveal (locks first if needed)
+  - B: leaderboard, only between rounds, so a round can't be abandoned unscored
+  - F: fullscreen (hides the control bar until hover)
+  - A or \`: admin
+  - ← and PageUp (a clicker's "back") are ignored on purpose.
+- **Admin panel.** Start any round now (jump), skip to the next round without scoring, +15 s, show the
+  lobby/QR, hide or unhide names (also hidden in the current reveal), and switch to a new session.
+- **Recovery.** A refresh reloads the State row. In reveal, it replays the animation *without*
+  re-scoring (`afterRound` guard).
+- **Sign-in.** `IdentityManager.getCredential()` shows the SDK's own ArcGIS username dialog. Cancelling
+  is handled ("Sign-in was cancelled…"). Credentials are saved in **sessionStorage** (this tab only), so
+  a mid-game refresh doesn't ask again. An OAuth client ID is used only if `oauthClientId` is set.
+- **QR code** is drawn locally by `qrcode-generator` 1.4.4 from cdnjs, pinned with an SRI hash (2.0.4
+  has no files on cdnjs). The join URL is `play.html?session=…`, plus `&backend=` when the host overrides
+  the configured backend.
+- **Reveal animation.** All pins drop in, then the answer polygon and target appear. Dashed lines go to
+  the top 5; the top 3 get name labels, staggered above/below/right. The map zooms to the answer plus
+  the top 3. Found in testing: including a far-off 5th place zoomed out until the leaders' labels piled
+  up.
+
+**Tested on the mock backend (pane-sized 16:9-ish viewport).** This was a full 6-round game with 5
+simulated players and a phone tab:
+- The timer auto-locked at 0 while the phone showed "Time's up".
+- The reveal ranked the players correctly: inside → 1000, 4.1 mi → 849, …
+- A refresh mid-reveal resumed without re-scoring.
+- Round 2 scored the phone's guess (0.3 mi, +987). Round 3, with no guesses, revealed cleanly.
+- At the end of Break 1 the flow went leaderboard → intermission lobby ("Break 2 — round 4 of 6 is up
+  next").
+- B mid-round was refused. +15 s worked (44 → 57). Hiding a name worked, and a jump to round 6 worked.
+- Final showed the champion, and the phone showed "You finished #2 of 6".
+- With `?backend=agol`, the sign-in dialog appeared, and cancelling it was handled.
+
+**Not yet done:** a real AGOL game. That needs your sign-in, and it writes `test-*` rows to the State and
+Guesses tables.
+
+**Runbook notes (Phase 7)**
+- **Keep the host tab visible during a round.** Chrome slows timers in hidden tabs, heavily after about
+  5 minutes, so an auto-lock could fire late behind the slides. Between breaks it doesn't matter.
+- Clickers: confirm which keys yours sends. Some send "b" or "." for "black screen", and B is the
+  leaderboard key here (it's refused mid-round).
+
+---
+
 ## 4. Other things to know before changing code
 
 **Answer leaks and anti-cheat (brief §3.6)**

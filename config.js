@@ -205,6 +205,15 @@ window.ARCGIGUESS_CONFIG = {
         // State table (create_layers.py, 2026-09-24).
         jsonFieldLength: 64000,
 
+        // Round rules (host.html).
+        roundSeconds: 45, // guessing time per round (brief §8 suggests 45)
+        lateGraceMs: 3000, // guesses up to this long after the lock still count
+        missedRoundMiles: 300, // added to total distance when a player skips a round (tie-breaker)
+
+        // The URL on the lobby QR code. null = play.html next to host.html,
+        // with this session (and backend, if overridden) in the query string.
+        joinUrl: null,
+
         // Milliseconds between state polls, per phase (brief §3.2). ±jitter.
         polling: { lobby: 5000, final: 10000, default: 2500, jitter: 0.25 },
 

@@ -17,7 +17,7 @@
  *                            player tabs in one browser; phones should pause)
  * ========================================================================== */
 import { createPlayerBackend, resolveLiveConfig, watchState, siteUrl } from "./backend.js";
-import { sdkReady, setupWVMap, makePinSymbol, animatePinDrop } from "./map.js";
+import { sdkReady, setupWVMap, makePinSymbol, animatePinDrop, zoomToLonLats } from "./map.js";
 import { validateNickname } from "./names.js";
 import { playerTag, leaderboardRank } from "./round.js";
 import { formatMiles } from "./scoring.js";
@@ -304,13 +304,9 @@ setInterval(tickCountdown, 250);
 async function initMap() {
     document.body.classList.add("map-pending");
     await sdkReady();
-    const [Graphic, Extent, webMercatorUtils] = await $arcgis.import([
-        "@arcgis/core/Graphic.js",
-        "@arcgis/core/geometry/Extent.js",
-        "@arcgis/core/geometry/support/webMercatorUtils.js",
-    ]);
+    const [Graphic] = await $arcgis.import(["@arcgis/core/Graphic.js"]);
     const { resetView } = await setupWVMap(mapEl, CONFIG.map);
-    mapApi = { Graphic, Extent, webMercatorUtils, resetView };
+    mapApi = { Graphic, resetView };
     document.body.classList.remove("map-pending");
     $("map-loading").hidden = true;
 
@@ -391,38 +387,7 @@ function drawReveal(g) {
         );
     }
     mapEl.graphics.add(answer);
-    zoomToPoints(g ? [a, g] : [a]);
-}
-
-/**
- * Zoom to lon/lat points with some room around them. The extent is built in
- * the view's Web Mercator units: handing goTo() WGS84 graphics made it treat
- * degrees as meters and zoom to the max (seen in testing). A 3 km minimum
- * keeps a direct hit from zooming in to street level.
- */
-function zoomToPoints(points, minMeters = 3000) {
-    const { Extent, webMercatorUtils } = mapApi;
-    const lons = points.map((p) => p.lon);
-    const lats = points.map((p) => p.lat);
-    const ext = webMercatorUtils.geographicToWebMercator(
-        new Extent({
-            xmin: Math.min(...lons),
-            ymin: Math.min(...lats),
-            xmax: Math.max(...lons),
-            ymax: Math.max(...lats),
-            spatialReference: { wkid: 4326 },
-        })
-    );
-    const { x, y } = ext.center;
-    const half = (d) => Math.max(d, minMeters) * 0.8; // 1.6x the span
-    const target = new Extent({
-        xmin: x - half(ext.width),
-        ymin: y - half(ext.height),
-        xmax: x + half(ext.width),
-        ymax: y + half(ext.height),
-        spatialReference: ext.spatialReference,
-    });
-    mapEl.goTo(target, { duration: 900 }).catch(() => {});
+    zoomToLonLats(mapEl, g ? [a, g] : [a]);
 }
 
 function onNewRound() {

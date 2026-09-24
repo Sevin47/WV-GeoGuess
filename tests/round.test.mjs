@@ -8,6 +8,7 @@ import {
     leaderboardRank,
     polygonCentroid,
     setNameHidden,
+    hideNameInReveal,
     HIDDEN_NAME,
 } from "../js/round.js";
 
@@ -54,7 +55,7 @@ test("scoreRound builds reveal + leaderboard with ranks and ties", () => {
     assert.deepEqual(reveal.results.cccccccc, [950, 5, 2]);
     assert.deepEqual(reveal.results.dddddddd, [900, 10, 4]);
     assert.equal(reveal.count, 4);
-    assert.deepEqual(reveal.top[0], ["Ann", 1000, 0]);
+    assert.deepEqual(reveal.top[0], ["aaaaaaaa", "Ann", 1000, 0]);
     assert.deepEqual({ lon: reveal.answer.lon, lat: reveal.answer.lat }, { lon: 1, lat: 1 });
     assert.equal(leaderboard.rows[0][0], "aaaaaaaa");
     assert.equal(leaderboardRank(leaderboard, "cccccccc"), 2);
@@ -85,7 +86,8 @@ test("hidden names stay hidden in later rounds and in the round's top list", () 
     assert.equal(board.rows[0][1], HIDDEN_NAME);
     const r2 = scoreRound({ roundNum: 2, landmark: LANDMARK, lockTime: 1000, scoreGuess, prevBoard: board, guesses: [guess("aaaaaaaa", 1, 1, 1, "Rude")] });
     assert.equal(r2.leaderboard.rows[0][1], HIDDEN_NAME);
-    assert.equal(r2.reveal.top[0][0], HIDDEN_NAME);
+    assert.equal(r2.reveal.top[0][1], HIDDEN_NAME);
+    assert.equal(hideNameInReveal(r1.reveal, "aaaaaaaa").top[0][1], HIDDEN_NAME);
 });
 
 test("refuses to score a round that's already on the leaderboard", () => {

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>WV GeoGuess — Host</title>
+        <link rel="icon" href="./assets/logo.svg" type="image/svg+xml" />
+        <link rel="stylesheet" href="css/host.css" />
+        <!-- QR codes are drawn locally; no external QR API (brief §3.5). -->
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"
+            integrity="sha512-ZDSPMa/JM1D+7kdg2x3BsruQ6T/JpJo3jWDWkCZsP+5yVyp1KfESqLI+7RqB5k24F7p2cV7i2YHh/890y6P6Sw=="
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"
+        ></script>
+        <script type="module" src="https://js.arcgis.com/5.1/"></script>
+    </head>
+
+    <!-- Designed for a 1920×1080 projector; everything is sized in vw/vh. -->
+    <body data-screen="setup">
+        <!-- Reveal map: always mounted (a hidden map has no size), shown on reveal. -->
+        <arcgis-map id="map"></arcgis-map>
+
+        <!-- Setup / sign-in -->
+        <section id="screen-setup" class="screen center">
+            <img src="assets/logo.svg" alt="WV GeoGuess" class="logo" />
+            <h1>Host console</h1>
+            <p id="setup-detail" class="lead"></p>
+            <button id="start" class="btn">Start</button>
+            <p id="setup-error" class="error" role="alert"></p>
+            <p class="muted small">Keys: Space / → / PageDown = next · L lock · R reveal · B leaderboard · F fullscreen · A admin</p>
+        </section>
+
+        <!-- Lobby: QR code and join URL -->
+        <section id="screen-lobby" class="screen lobby">
+            <div class="lobby-text">
+                <img src="assets/logo.svg" alt="WV GeoGuess" class="logo" />
+                <h1 id="lobby-title">Scan to play!</h1>
+                <p id="lobby-sub" class="lead">Drop a pin where you think each photo was taken.</p>
+                <p class="join-url" id="lobby-url"></p>
+                <p class="muted">No app, no sign-up — just your name.</p>
+            </div>
+            <div class="qr big" id="lobby-qr" aria-label="QR code to join"></div>
+        </section>
+
+        <!-- Round: photo, timer, guess count -->
+        <section id="screen-round" class="screen round">
+            <div class="photo-wrap">
+                <img id="round-photo" alt="Photo of the place to find" />
+            </div>
+            <aside class="round-side">
+                <div id="round-label" class="round-label"></div>
+                <div id="round-prompt" class="round-prompt"></div>
+                <div id="timer" class="timer" aria-live="off"></div>
+                <div id="timer-note" class="timer-note"></div>
+                <div class="guess-count"><strong id="guess-count">0</strong> <span id="guess-count-label">guesses in</span></div>
+                <div class="join-mini">
+                    <div class="qr small" id="round-qr"></div>
+                    <div class="join-mini-url" id="round-url"></div>
+                </div>
+            </aside>
+        </section>
+
+        <!-- Reveal: map on the left (the #map element), details on the right -->
+        <section id="screen-reveal" class="screen reveal">
+            <aside class="reveal-side">
+                <div id="reveal-label" class="round-label"></div>
+                <h1 id="reveal-name"></h1>
+                <p id="reveal-fact" class="fact"></p>
+                <p id="reveal-credit" class="muted small"></p>
+                <h2>Closest guesses</h2>
+                <ol id="reveal-top" class="top-list"></ol>
+                <p id="reveal-count" class="muted"></p>
+            </aside>
+        </section>
+
+        <!-- Leaderboard -->
+        <section id="screen-leaderboard" class="screen board">
+            <h1 id="board-title">Leaderboard</h1>
+            <ol id="board-list" class="board-list"></ol>
+        </section>
+
+        <!-- Final -->
+        <section id="screen-final" class="screen board">
+            <div class="trophy" aria-hidden="true">🏆</div>
+            <h1>Champion</h1>
+            <div id="final-champion" class="champion"></div>
+            <ol id="final-list" class="board-list"></ol>
+        </section>
+
+        <!-- Controls (hidden in fullscreen presenting, shown on mouse move) -->
+        <nav id="controls" class="controls">
+            <span id="status-line" class="status-line"></span>
+            <button id="btn-next" class="btn small">Next ▶</button>
+            <button id="btn-lock" class="btn small ghost">Lock (L)</button>
+            <button id="btn-reveal" class="btn small ghost">Reveal (R)</button>
+            <button id="btn-board" class="btn small ghost">Leaderboard (B)</button>
+            <button id="btn-admin" class="btn small ghost">Admin (A)</button>
+        </nav>
+
+        <div id="toast" class="toast" role="alert" hidden></div>
+
+        <!-- Admin panel (hidden) -->
+        <dialog id="admin" class="admin">
+            <h2>Admin</h2>
+            <p id="admin-session" class="muted small"></p>
+            <div class="admin-row">
+                <label for="admin-round">Round</label>
+                <select id="admin-round"></select>
+                <button id="admin-jump" class="btn small">Start this round now</button>
+            </div>
+            <div class="admin-row">
+                <button id="admin-skip" class="btn small ghost">Skip to next round (no scoring)</button>
+                <button id="admin-time" class="btn small ghost">+15 seconds</button>
+                <button id="admin-lobby" class="btn small ghost">Show lobby / QR</button>
+            </div>
+            <h3>Hide a name</h3>
+            <div id="admin-names" class="admin-names"></div>
+            <h3>New session</h3>
+            <div class="admin-row">
+                <input id="admin-new-session" placeholder="test-rehearsal-2" />
+                <button id="admin-new" class="btn small ghost">Switch to session</button>
+            </div>
+            <form method="dialog"><button class="btn small">Close (Esc)</button></form>
+        </dialog>
+
+        <script src="config.js"></script>
+        <script type="module" src="js/host.js"></script>
+    </body>
+</html>

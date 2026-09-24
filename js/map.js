@@ -269,6 +269,41 @@ function fitScaleForSize(extent, width, height, margin) {
     return (resolution * 96) / 0.0254;
 }
 
+/**
+ * Zoom to lon/lat points (and optionally extra lon/lat bounds) with room
+ * around them. The extent is built in the view's Web Mercator units: handing
+ * goTo() WGS84 graphics made it treat degrees as meters and zoom to level 23
+ * (seen in testing). `minMeters` keeps a single point or a direct hit from
+ * zooming to street level; `factor` is the room around the points.
+ */
+export async function zoomToLonLats(mapEl, points, { minMeters = 3000, factor = 1.6, duration = 900 } = {}) {
+    const [Extent, webMercatorUtils] = await $arcgis.import([
+        "@arcgis/core/geometry/Extent.js",
+        "@arcgis/core/geometry/support/webMercatorUtils.js",
+    ]);
+    const lons = points.map((p) => p.lon);
+    const lats = points.map((p) => p.lat);
+    const ext = webMercatorUtils.geographicToWebMercator(
+        new Extent({
+            xmin: Math.min(...lons),
+            ymin: Math.min(...lats),
+            xmax: Math.max(...lons),
+            ymax: Math.max(...lats),
+            spatialReference: { wkid: 4326 },
+        })
+    );
+    const { x, y } = ext.center;
+    const half = (d) => (Math.max(d, minMeters) * factor) / 2;
+    const target = new Extent({
+        xmin: x - half(ext.width),
+        ymin: y - half(ext.height),
+        xmax: x + half(ext.width),
+        ymax: y + half(ext.height),
+        spatialReference: ext.spatialReference,
+    });
+    return mapEl.goTo(target, { duration }).catch(() => {});
+}
+
 /** Polygon covering the region around WV with the state's outline as a hole. */
 function outsideMask(geojson) {
     const outer = [[-95, 30], [-95, 48], [-65, 48], [-65, 30], [-95, 30]]; // clockwise
