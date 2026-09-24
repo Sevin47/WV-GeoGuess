@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
     pointsForMiles,
     formatMiles,
+    sameSR,
     metersToMiles,
 } from "../js/scoring.js";
 
@@ -41,6 +42,13 @@ test("bands: full points in the first band, linear drop, floored at min", () => 
     assert.equal(pointsForMiles(5, false, bands), 960);
     assert.equal(pointsForMiles(52, false, bands), 600);
     assert.equal(pointsForMiles(500, false, bands), 0);
+});
+
+test("sameSR treats the Web Mercator aliases as equal", () => {
+    assert.ok(sameSR({ wkid: 102100 }, { wkid: 3857 }));
+    assert.ok(sameSR({ wkid: 102100, latestWkid: 3857 }, { wkid: 3857 }));
+    assert.ok(sameSR({ wkid: 4326 }, { wkid: 4326 }));
+    assert.ok(!sameSR({ wkid: 4326 }, { wkid: 102100 }));
 });
 
 test("formatMiles", () => {

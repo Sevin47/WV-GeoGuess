@@ -4,7 +4,7 @@
     {
       "name": "static",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8000"],
+      "runtimeArgs": ["scripts/serve.py", "8000"],
       "port": 8000
     }
   ]

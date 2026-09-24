@@ -1,8 +1,10 @@
 > **WV GeoGuess fork.** This repo is being adapted into a live audience game for WVDOT GIS Day
 > (Nov 13, 2026). See [`WV-GeoGuess-Brief.md`](./WV-GeoGuess-Brief.md) for the plan and
 > [`docs/NOTES.md`](./docs/NOTES.md) for code notes. Scoring now lives in `js/scoring.js`
-> (miles, exponential or bands). Run the unit tests with `node --test`. The upstream README
-> below is kept for reference and is partly out of date for this fork.
+> (miles, exponential or bands). Run the unit tests with `node --test`, and serve locally with
+> `python scripts/serve.py` (no-cache). ArcGIS Online setup is in
+> [`docs/AGOL_SETUP.md`](./docs/AGOL_SETUP.md). The upstream README below is kept for reference and is
+> partly out of date for this fork.
 
 # ArcGIGuess
 

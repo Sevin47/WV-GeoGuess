@@ -45,6 +45,18 @@ export function pointsForMiles(miles, inside, scoring) {
     return Math.round(max * Math.exp(-miles / scoring.exponential.scaleMiles));
 }
 
+const WEB_MERCATOR = new Set([102100, 3857, 102113, 900913]);
+
+function srId(sr) {
+    return sr ? sr.latestWkid ?? sr.wkid ?? sr.wkt : undefined;
+}
+
+export function sameSR(a, b) {
+    const x = srId(a);
+    const y = srId(b);
+    return x === y || (WEB_MERCATOR.has(x) && WEB_MERCATOR.has(y));
+}
+
 /**
  * Build the SDK-backed scorer. Pass in the operator modules loaded via
  * $arcgis.import() so this file stays free of SDK imports (and testable).
@@ -63,6 +75,14 @@ export function createScorer(
 
         /** Score a guess point against an answer polygon (same SR, any SR). */
         scoreGuess(polygon, point) {
+            // Mixed SRs don't throw in the operators; they silently return
+            // nonsense (thousands of miles), so refuse them.
+            if (!sameSR(polygon.spatialReference, point.spatialReference)) {
+                throw new Error(
+                    `scoreGuess: polygon (${srId(polygon.spatialReference)}) and point ` +
+                        `(${srId(point.spatialReference)}) must share a spatial reference`
+                );
+            }
             const inside = containsOperator.execute(polygon, point);
             // `distance` is geodesic meters regardless of the input SR.
             const meters = inside

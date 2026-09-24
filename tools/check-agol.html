@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>WV GeoGuess — AGOL setup check</title>
+        <!--
+            DEV/SETUP TOOL. Checks the hosted layers in CONFIG.live.agol the way
+            a player's phone sees them: anonymously, from this page's origin
+            (so CORS is tested too). Open it on the real hosting site and on a
+            phone on venue Wi-Fi / cell data (brief §3.7).
+
+            Read-only by default. "Send a test guess" writes ONE point to the
+            guesses view with session "test-check".
+
+            Any URL can be overridden for a one-off check, e.g.
+              check-agol.html?statePublicUrl=https://.../FeatureServer/0
+        -->
+        <style>
+            * { box-sizing: border-box; }
+            body { font: 15px/1.45 system-ui, sans-serif; margin: 0; padding: 16px; background: #f3f4f6; color: #111; }
+            main { max-width: 860px; margin: 0 auto; }
+            h1 { font-size: 20px; margin: 0 0 4px; }
+            .meta { color: #555; font-size: 13px; margin-bottom: 12px; word-break: break-all; }
+            table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
+            td, th { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; vertical-align: top; text-align: left; }
+            th { background: #f9fafb; font-size: 13px; }
+            .status { font-weight: 700; white-space: nowrap; }
+            .PASS { color: #15803d; }
+            .FAIL { color: #b91c1c; }
+            .WARN { color: #b45309; }
+            .SKIP { color: #6b7280; }
+            .detail { color: #4b5563; font-size: 13px; word-break: break-word; }
+            button { padding: 8px 14px; margin: 12px 8px 12px 0; cursor: pointer; }
+            #summary { font-weight: 700; margin: 12px 0; }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h1>AGOL setup check</h1>
+            <div class="meta" id="meta"></div>
+            <button id="run">Run checks</button>
+            <button id="test-guess">Send a test guess</button>
+            <div id="summary"></div>
+            <table>
+                <thead><tr><th>Status</th><th>Check</th><th>Detail</th></tr></thead>
+                <tbody id="results"></tbody>
+            </table>
+        </main>
+
+        <script src="../config.js"></script>
+        <script type="module">
+            import { createPlayerBackend } from "../js/backend.js";
+
+            const CONFIG = window.ARCGIGUESS_CONFIG;
+            const params = new URLSearchParams(location.search);
+            const agol = { ...CONFIG.live.agol };
+            for (const key of ["landmarksUrl", "stateUrl", "statePublicUrl", "guessesUrl", "guessesPublicUrl"]) {
+                if (params.get(key)) agol[key] = params.get(key);
+            }
+            document.getElementById("meta").textContent =
+                `Origin: ${location.origin} · Anonymous (no sign-in) · jsonFieldLength in config: ${CONFIG.live.jsonFieldLength}`;
+
+            const rows = document.getElementById("results");
+            const results = [];
+            function report(status, check, detail = "") {
+                results.push(status);
+                const tr = document.createElement("tr");
+                for (const [cls, text] of [[`status ${status}`, status], ["", check], ["detail", detail]]) {
+                    const td = document.createElement("td");
+                    td.className = cls;
+                    td.textContent = text;
+                    tr.appendChild(td);
+                }
+                rows.appendChild(tr);
+            }
+
+            /** GET <url>?f=json anonymously. Returns {json} or {error}. */
+            async function anon(url, query = {}) {
+                const qs = new URLSearchParams({ f: "json", ...query, _: Date.now() });
+                try {
+                    const res = await fetch(`${url}?${qs}`, { cache: "no-store" });
+                    const json = await res.json();
+                    if (json.error) return { error: `${json.error.code}: ${json.error.message}`, code: json.error.code };
+                    return { json };
+                } catch (e) {
+                    // A CORS block or network failure looks like this.
+                    return { error: `network/CORS: ${e.message}`, network: true };
+                }
+            }
+
+            const caps = (json) => new Set((json?.capabilities || "").split(",").map((s) => s.trim()).filter(Boolean));
+            const fmtCaps = (set) => [...set].sort().join(",") || "(none)";
+
+            async function mustBePrivate(label, url) {
+                if (!url) return report("SKIP", `${label} is private`, "URL not configured");
+                const r = await anon(`${url}/query`, { where: "1=1", returnCountOnly: true });
+                if (r.json) return report("FAIL", `${label} is private`, `Anonymous query succeeded (count=${r.json.count}). UNSHARE THIS LAYER.`);
+                // Only an auth refusal proves it's private. Anything else (bad URL,
+                // network) would also fail the query, so it's only a warning.
+                const authRefused = [498, 499, 403].includes(r.code);
+                report(authRefused ? "PASS" : "WARN", `${label} is private`, authRefused ? r.error : `Could not tell (check the URL): ${r.error}`);
+            }
+
+            async function run() {
+                rows.innerHTML = "";
+                results.length = 0;
+                document.getElementById("summary").textContent = "Running…";
+
+                // 1. Answers and owner layers must not be readable anonymously.
+                await mustBePrivate("Landmarks (answers)", agol.landmarksUrl);
+                await mustBePrivate("State (owner table)", agol.stateUrl);
+                await mustBePrivate("Guesses (owner layer)", agol.guessesUrl);
+
+                // 2. Public state view: readable, read-only, low cache, big JSON fields.
+                if (!agol.statePublicUrl) {
+                    report("SKIP", "State public view", "URL not configured");
+                } else {
+                    const meta = await anon(agol.statePublicUrl);
+                    if (meta.error) {
+                        report("FAIL", "State public view is readable", meta.error);
+                    } else {
+                        const c = caps(meta.json);
+                        report(c.size === 1 && c.has("Query") ? "PASS" : "FAIL", "State public view is read-only", `capabilities: ${fmtCaps(c)} (want Query only)`);
+                        const q = await anon(`${agol.statePublicUrl}/query`, { where: "1=1", returnCountOnly: true });
+                        report(q.json ? "PASS" : "FAIL", "State public view: anonymous query works", q.json ? `${q.json.count} row(s) visible` : q.error);
+                        for (const name of ["reveal_json", "leaderboard_json"]) {
+                            const f = (meta.json.fields || []).find((x) => x.name === name);
+                            if (!f) report("FAIL", `Field ${name} exists`, "missing");
+                            else report(f.length >= CONFIG.live.jsonFieldLength ? "PASS" : "FAIL", `Field ${name} length`, `layer says ${f.length}; config.live.jsonFieldLength is ${CONFIG.live.jsonFieldLength}`);
+                        }
+                        // cacheMaxAge is a service-level property.
+                        const svc = await anon(agol.statePublicUrl.replace(/\/\d+\/?$/, ""));
+                        const age = svc.json?.cacheMaxAge;
+                        report(age === 0 ? "PASS" : age == null ? "WARN" : "FAIL", "State public view: cache control", age == null ? "cacheMaxAge not reported; check Settings > Cache control" : `cacheMaxAge = ${age}s (want 0)`);
+                    }
+                }
+
+                // 3. Public guesses view: add-only and blind.
+                if (!agol.guessesPublicUrl) {
+                    report("SKIP", "Guesses public view", "URL not configured");
+                } else {
+                    const meta = await anon(agol.guessesPublicUrl);
+                    if (meta.error) {
+                        report("FAIL", "Guesses public view metadata is reachable", meta.error);
+                    } else {
+                        const c = caps(meta.json);
+                        const blind = c.has("Create") && !c.has("Query") && !c.has("Update") && !c.has("Delete");
+                        report(blind ? "PASS" : "FAIL", "Guesses public view is add-only and blind", `capabilities: ${fmtCaps(c)} (want Create, no Query/Update/Delete)`);
+                        const wkid = meta.json.extent?.spatialReference?.latestWkid ?? meta.json.extent?.spatialReference?.wkid;
+                        const want = CONFIG.live.agol.guessLayerWkid;
+                        const same = wkid === want || (new Set([3857, 102100]).has(wkid) && new Set([3857, 102100]).has(want));
+                        report(same ? "PASS" : "FAIL", "Guesses layer SR matches config", `layer ${wkid}, config.live.agol.guessLayerWkid ${want} (addFeatures has no inSR)`);
+                        const efi = meta.json.editFieldsInfo;
+                        report(efi?.creationDateField === CONFIG.live.agol.createdField ? "PASS" : "WARN", "Editor tracking (server timestamps)", efi ? `creationDateField = ${efi.creationDateField}` : "editFieldsInfo not visible on the view; check the source layer");
+                        const q = await anon(`${agol.guessesPublicUrl}/query`, { where: "1=1", outFields: "*", resultRecordCount: 1 });
+                        const hidden = q.error || !(q.json.features?.length);
+                        report(hidden ? "PASS" : "FAIL", "Guesses public view: anonymous query sees nothing", q.error ? q.error : `${q.json.features.length} feature(s) visible — players could read guesses!`);
+                    }
+                }
+
+                const fails = results.filter((s) => s === "FAIL").length;
+                const warns = results.filter((s) => s === "WARN").length;
+                document.getElementById("summary").textContent = fails
+                    ? `${fails} FAILED, ${warns} warning(s). Fix these before the event.`
+                    : `All checks passed (${warns} warning(s)).`;
+            }
+
+            async function testGuess() {
+                if (!agol.guessesPublicUrl) return report("SKIP", "Test guess", "guessesPublicUrl not configured");
+                const player = createPlayerBackend({ ...CONFIG.live, backend: "agol", agol });
+                const t0 = performance.now();
+                try {
+                    const { objectId } = await player.submitGuess({
+                        sessionId: "test-check",
+                        roundNum: 0,
+                        playerId: "check-agol",
+                        nickname: "setup check",
+                        lon: -81.6326, // Charleston
+                        lat: 38.3498,
+                    });
+                    report("PASS", "Anonymous add to guesses view", `objectId ${objectId} in ${Math.round(performance.now() - t0)} ms (session test-check)`);
+                } catch (e) {
+                    report("FAIL", "Anonymous add to guesses view", `${e.code ?? ""} ${e.message}. Is public editing approved on the view (Settings)?`);
+                }
+            }
+
+            document.getElementById("run").addEventListener("click", run);
+            document.getElementById("test-guess").addEventListener("click", testGuess);
+            run();
+        </script>
+    </body>
+</html>

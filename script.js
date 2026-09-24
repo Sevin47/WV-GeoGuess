@@ -22,6 +22,7 @@
  * ========================================================================== */
 import { createScorer, formatMiles, pointsForMiles } from "./js/scoring.js";
 import { loadWebMap, makePinSymbol, animatePinDrop } from "./js/map.js";
+import { siteUrl } from "./js/backend.js";
 
 $arcgis
     .import([
@@ -309,9 +310,26 @@ $arcgis
             // Update the dynamic landmark name if a round is in progress
             if (gameState === "PLAYING") {
                 const landmark = allLandmarks[currentLandmarkIndex];
-                $("landmark-name").innerText =
-                    landmark.attributes[CONFIG.landmarkNameField];
+                $("landmark-name").innerText = landmarkHeading(landmark);
             }
+        }
+
+        /**
+         * What the player sees during a round: the clue (prompt) if one is
+         * configured — the name would give the answer away — else the name.
+         */
+        function landmarkHeading(landmark) {
+            const a = landmark.attributes;
+            return CONFIG.landmarkPromptField
+                ? a[CONFIG.landmarkPromptField] || ""
+                : a[CONFIG.landmarkNameField];
+        }
+
+        /** Escape text for safe use inside an innerHTML string. */
+        function escapeHtml(text) {
+            const div = document.createElement("div");
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         /**
@@ -385,7 +403,9 @@ $arcgis
                 query.outFields = [
                     CONFIG.landmarkNameField,
                     CONFIG.landmarkIdField,
-                ];
+                    CONFIG.landmarkImageField,
+                    CONFIG.landmarkPromptField,
+                ].filter(Boolean);
                 query.returnGeometry = true;
 
                 return landmarksLayer
@@ -394,6 +414,19 @@ $arcgis
                         // Keep the layer's natural order here; shuffling (if
                         // enabled) happens per-game in startGame().
                         allLandmarks = featureSet.features;
+
+                        // Photos as static files (brief §3.1): no attachment
+                        // queries, and no access to the answer layer needed.
+                        if (CONFIG.landmarkImageField) {
+                            for (const feature of allLandmarks) {
+                                const path =
+                                    feature.attributes[CONFIG.landmarkImageField];
+                                feature.attributes.imageUrl = path
+                                    ? siteUrl(path)
+                                    : null;
+                            }
+                            return allLandmarks;
+                        }
 
                         const attachmentPromises = allLandmarks.map(
                             (feature) => {
@@ -485,10 +518,9 @@ $arcgis
             resetFinishEarly();
 
             const landmark = allLandmarks[currentLandmarkIndex];
-            const name = landmark.attributes[CONFIG.landmarkNameField];
             const imageUrl = landmark.attributes.imageUrl;
 
-            $("landmark-name").innerText = name;
+            $("landmark-name").innerText = landmarkHeading(landmark);
 
             // Handle the image display
             if (imageUrl) {
@@ -572,6 +604,14 @@ $arcgis
             }
 
             totalScore += roundScore;
+
+            if (CONFIG.landmarkPromptField) {
+                resultMessage += t("answerReveal", {
+                    name: escapeHtml(
+                        targetLandmark.attributes[CONFIG.landmarkNameField] || ""
+                    ),
+                });
+            }
 
             $("round-result-title").innerText = resultTitle;
             $("round-result-message").innerHTML = resultMessage;

@@ -173,6 +173,48 @@ other. If localStorage is unavailable, the mock falls back to memory, which only
 
 ---
 
+## 4c. Phase 3: data setup
+
+| File | What it is |
+|---|---|
+| `docs/AGOL_SETUP.md` | Step-by-step AGOL setup: layers, views, sharing, editing, cache, sign-in, verification. |
+| `scripts/create_layers.py` | Creates the layers and views from one spec, reads them back, and round-trips the JSON field length. Dry run by default. Calls checked against arcgis **2.4.3**, but **not yet run against a live org**. |
+| `scripts/strip_exif.py` | Photo prep: applies rotation, strips all metadata, 1600 px long edge, ≤ 400 KB, neutral names. Tested on a GPS-tagged, rotated 4000×3000 JPEG. |
+| `scripts/serve.py` | No-cache local dev server. Plain `http.server` let the browser run stale `config.js` and modules during testing. |
+| `tools/check-agol.html` | Anonymous, phone's-eye check of the security model and settings. Smoke-tested against a public Esri layer: it correctly FAILs "private" and "blind", and WARNs on a bad URL instead of passing. |
+
+**Verified against Esri docs (2026-09-24)**
+- The editing option wording is exact: "Editors can't see any features, even those they add". It's only
+  selectable with "Add" only, and it **removes the Query capability**.
+- A public layer with editing needs an extra approval: "Approve this layer to be shared with the public
+  when editing is enabled". This step is manual.
+- `cacheMaxAge` accepts 0–3600 s and defaults to 30. It only applies to public layers **without**
+  editing, and editable layers bypass the CDN.
+- **String field max length is not documented** beyond the 256 default. `create_layers.py` round-trips
+  64,000 chars, and `check-agol.html` compares the real field length with `live.jsonFieldLength`.
+- **Host sign-in:** the SDK's built-in prompt uses `generateToken`, which **doesn't support SAML/OIDC
+  single sign-on**. If WVDOT's AGOL uses SSO, `host.html` needs an OAuth client ID
+  (`live.agol.oauthClientId`, a public ID and not a secret).
+
+**Solo mode for our data model.** `landmarkImageField` loads photos from static `image_path` files, with
+no attachment queries. `landmarkPromptField` shows the clue during play and reveals the name with the
+result. Both are `null` while the Dubai placeholder is in use.
+
+**Security notes for Phase 5**
+- **Never publish full `player_id`s** in `reveal_json` or `leaderboard_json`. The guesses view accepts
+  anonymous adds, and the host keeps the *first* guess per player, so anyone who knew another player's
+  ID could lock in a bad guess for them in the next round. Publish a short tag instead (e.g. the first 8
+  characters) and let phones match on it.
+- Anyone can add junk guesses to the public view. The host ignores unknown sessions and rounds and keeps
+  one guess per player, and `listGuesses` pages through results. A flood would only slow the host's
+  query.
+
+**Caching on the hosted site.** GitHub Pages lets browsers cache files for about 10 minutes, so a
+`config.js` change made on event day can take that long to reach phones that already loaded the page.
+Freeze the config before doors open (Runbook, Phase 7).
+
+---
+
 ## 4. Other things to know before changing code
 
 **Answer leaks and anti-cheat (brief §3.6)**

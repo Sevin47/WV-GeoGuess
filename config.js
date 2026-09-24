@@ -55,10 +55,18 @@ window.ARCGIGUESS_CONFIG = {
     landmarkLayerTitle: "Dubai Landmarks",
 
     // Field names on the landmark layer.
-    //   idField   — the unique ID field (used to fetch each landmark's photo).
-    //   nameField — the landmark's display name.
+    //   idField     — the unique ID field (used to fetch attachment photos).
+    //   nameField   — the landmark's display name.
+    //   imageField  — site-relative photo path (e.g. assets/rounds/r01.jpg).
+    //                 null = use each feature's first attachment (upstream).
+    //   promptField — clue shown during play instead of the name; the name is
+    //                 then revealed with the result. null = show the name.
+    // TODO(Phase 3): "image_path" and "prompt_text" once the WV web map exists
+    // (docs/AGOL_SETUP.md §5). The Dubai placeholder has neither field.
     landmarkIdField: "OBJECTID",
     landmarkNameField: "name",
+    landmarkImageField: null,
+    landmarkPromptField: null,
 
     // How many landmarks to play per game. Set to null to use every landmark
     // in the layer. If you have 40 landmarks and set this to 10, each game
@@ -139,6 +147,8 @@ window.ARCGIGUESS_CONFIG = {
                 incorrectTitle: "Not quite!",
                 incorrectMessage:
                     "You were <strong>{distance} mi</strong> away. You earned <strong>+{roundScore} points</strong>. Here's the correct location.",
+                // Appended to the result when landmarkPromptField hides the name.
+                answerReveal: "<br>It was <strong>{name}</strong>.",
                 nextButton: "Next Location",
                 finishEarlyButton: "Finish early",
                 finishEarlyConfirm: "Tap again to end game",
@@ -213,6 +223,9 @@ window.ARCGIGUESS_CONFIG = {
             guessLayerWkid: 102100, // addFeatures has no inSR; send in layer SR
             createdField: "CreationDate", // editor-tracking field
             cacheBust: true, // unique param on public state polls
+            // Only if the org uses single sign-on (docs/AGOL_SETUP.md §7).
+            // A public client ID — never a client secret or API key.
+            oauthClientId: null,
         },
     },
 
