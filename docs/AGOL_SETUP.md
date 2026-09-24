@@ -156,9 +156,16 @@ other way (for example, publishing from Pro in another SR), change `live.agol.gu
      script.** Setting `cacheMaxAge: 0` from Python did not take effect in our real org (2026-09-24),
      and the view kept sending `Cache-Control: max-age=30`. Cache control only applies to public,
      non-editable layers, which is exactly this view.
+   - **Setting 0 may not stick.** In our org, saving 0 in the UI reported success but reverted to
+     30 (2026-09-24), and setting it from Python didn't stick either. AGOL appears to treat 0 as "not
+     set". A low non-zero value (e.g. 10 s) is the realistic minimum.
    - Until it's lowered, phones still get fresh state. The game adds a unique parameter to every poll
      (`live.agol.cacheBust: true`), and each of those requests is a CDN miss (`X-Cache: TCP_MISS`,
-     measured).
+     measured). With cache-busting on, this setting doesn't matter.
+   - **Tradeoff to revisit after the Phase 6 load test.** Cache-busting sends every poll straight to
+     AGOL: about 60 requests per second with 150 phones. If that proves too much, set `cacheBust:
+     false` and a short cache here (e.g. 5 s). The CDN then absorbs nearly all polling, and phones see
+     changes up to that many seconds late.
 3. **Share** the view with **Everyone**. Leave the source table private.
 
 ---
