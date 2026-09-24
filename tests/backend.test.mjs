@@ -248,6 +248,28 @@ test("geoJsonToEsriPolygon keeps holes counter-clockwise", () => {
     assert.deepEqual(rings[1], hole.slice().reverse());
 });
 
+test("watchState pauses while the document is hidden, unless document: null", async () => {
+    const { host, player, close } = mockPair();
+    try {
+        await host.createSession("test-h");
+        const hiddenDoc = { hidden: true, addEventListener() {}, removeEventListener() {} };
+        const paused = [];
+        const w1 = watchState(player, "test-h", (s) => paused.push(s?.phase), { intervals: { default: 10, lobby: 10 }, document: hiddenDoc });
+        const always = [];
+        const saved = globalThis.document;
+        globalThis.document = hiddenDoc; // a hidden page, as in a background tab
+        const w2 = watchState(player, "test-h", (s) => always.push(s?.phase), { intervals: { default: 10, lobby: 10 }, document: null });
+        await new Promise((r) => setTimeout(r, 50));
+        w1.stop();
+        w2.stop();
+        globalThis.document = saved;
+        assert.deepEqual(paused, []);
+        assert.deepEqual(always, ["lobby"]);
+    } finally {
+        close();
+    }
+});
+
 test("watchState reports changes only, and stops cleanly", async () => {
     const { host, player, close } = mockPair();
     try {

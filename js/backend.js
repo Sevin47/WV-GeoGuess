@@ -657,7 +657,9 @@ export function watchState(backend, sessionId, onState, opts = {}) {
     const intervals = { lobby: 5000, final: 10000, default: 2500, ...opts.intervals };
     const jitter = opts.jitter ?? 0.25;
     const onError = opts.onError || (() => {});
-    const doc = opts.document ?? globalThis.document;
+    // `document: null` means "never pause" (hosts, bots). `??` would treat
+    // null as missing, so check for the key explicitly.
+    const doc = "document" in opts ? opts.document : globalThis.document;
 
     let stopped = false;
     let timer = null;
@@ -683,6 +685,7 @@ export function watchState(backend, sessionId, onState, opts = {}) {
         try {
             const state = await backend.getState(sessionId);
             errors = 0;
+            opts.onSuccess?.();
             const key = state ? String(state.updatedAt) : "none";
             if (key !== lastKey && !stopped) {
                 lastKey = key;

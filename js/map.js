@@ -23,6 +23,17 @@ export const BASEMAPS = {
     imagery: "https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer",
 };
 
+/**
+ * Resolve once the SDK's global $arcgis exists. Lets a page run its own UI
+ * (e.g. the join screen) before the multi-MB SDK has finished loading.
+ */
+export function sdkReady() {
+    return new Promise((resolve) => {
+        const check = () => (globalThis.$arcgis ? resolve(globalThis.$arcgis) : setTimeout(check, 50));
+        check();
+    });
+}
+
 // --- Guess pin ---------------------------------------------------------------
 // The artwork is a plain file (assets/pin.svg) — replace it to restyle. It's
 // drawn on the map canvas, so it's animated by swapping the symbol's offset
@@ -182,9 +193,9 @@ export async function setupWVMap(mapEl, opts = {}) {
     mapEl.map = map;
     await mapEl.viewOnReady();
 
-    if (constrain) await constrainToWV(mapEl);
+    const view = constrain ? await constrainToWV(mapEl) : null;
 
-    return { map, boundaryLayer, countiesLayer };
+    return { map, boundaryLayer, countiesLayer, resetView: view?.resetView ?? (() => {}) };
 }
 
 /**
@@ -230,12 +241,17 @@ export async function constrainToWV(mapEl, { margin = 0.04, padding = 0.15 } = {
         if (scale) c.minZoom = Math.max(0, Math.floor(Math.log2(ZOOM0_SCALE / scale)));
     };
 
+    /** Back to the statewide view (e.g. at the start of each round). */
+    const resetView = ({ animate = false } = {}) => {
+        const scale = fitScale();
+        return scale ? mapEl.goTo({ target: wv.center, scale }, { animate }).catch(() => {}) : Promise.resolve();
+    };
+
     applyMinZoom();
-    const scale = fitScale();
-    if (scale) await mapEl.goTo({ target: wv.center, scale }, { animate: false });
+    await resetView();
 
     reactiveUtils.watch(() => [view.width, view.height], applyMinZoom);
-    return wv;
+    return { extent: wv, resetView };
 }
 
 const ZOOM0_SCALE = 591657527.591555; // standard Web Mercator LOD 0

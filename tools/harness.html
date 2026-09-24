@@ -87,6 +87,8 @@
                 siteUrl,
             } from "../js/backend.js";
             import { setupWVMap, makePinSymbol, animatePinDrop } from "../js/map.js";
+            import { scoreRound } from "../js/round.js";
+            import { createScorer } from "../js/scoring.js";
 
             const CONFIG = window.ARCGIGUESS_CONFIG;
             const params = new URLSearchParams(location.search);
@@ -100,7 +102,15 @@
             $("meta").textContent = `backend=${backend.kind} · session=${sid}`;
             const log = (msg) => ($("log").textContent = msg ? `⚠ ${msg}` : "");
 
-            const [Graphic] = await $arcgis.import(["@arcgis/core/Graphic.js"]);
+            const [Graphic, Polygon, Point, containsOperator, geodesicProximityOperator] = await $arcgis.import([
+                "@arcgis/core/Graphic.js",
+                "@arcgis/core/geometry/Polygon.js",
+                "@arcgis/core/geometry/Point.js",
+                "@arcgis/core/geometry/operators/containsOperator.js",
+                "@arcgis/core/geometry/operators/geodesicProximityOperator.js",
+            ]);
+            const scorer = createScorer({ containsOperator, geodesicProximityOperator }, CONFIG.scoring);
+            await scorer.load();
             const mapEl = $("map");
             await setupWVMap(mapEl, CONFIG.map);
 
@@ -146,7 +156,14 @@
                     render();
                     if (role === "host") refreshGuesses();
                 },
-                { ...CONFIG.live.polling, intervals: CONFIG.live.polling, onError: (e) => log(e.message) }
+                {
+                    intervals: CONFIG.live.polling,
+                    jitter: CONFIG.live.polling.jitter,
+                    onError: (e) => log(e.message),
+                    // Never pause: this tab plays the host, and the host must keep
+                    // running while hidden (e.g. behind the slides).
+                    document: null,
+                }
             );
 
             // --- host ------------------------------------------------------------
@@ -172,11 +189,29 @@
                             reveal: null,
                         });
                     },
-                    lock: () => backend.updateState(sid, { phase: "locked" }),
-                    reveal: () => {
+                    // Locking early also pulls roundEndsAt in, so every phone's
+                    // countdown stops and the lock time survives a host refresh.
+                    lock: () =>
+                        backend.updateState(sid, {
+                            phase: "locked",
+                            roundEndsAt: Math.min(state.roundEndsAt || Infinity, Date.now()),
+                        }),
+                    // Real scoring through js/round.js (the Phase 5 host will do the same).
+                    reveal: async () => {
                         const lm = landmarks.find((l) => l.roundOrder === state.roundNum);
+                        const guesses = await backend.listGuesses(sid, state.roundNum);
+                        const polygon = Polygon.fromJSON(lm.geometry);
+                        const { reveal, leaderboard } = scoreRound({
+                            roundNum: state.roundNum,
+                            landmark: lm,
+                            guesses,
+                            lockTime: state.roundEndsAt,
+                            prevBoard: state.leaderboard,
+                            scoreGuess: (_lm, g) =>
+                                scorer.scoreGuess(polygon, new Point({ longitude: g.lon, latitude: g.lat })),
+                        });
                         drawAnswer(lm);
-                        return backend.updateState(sid, { phase: "reveal", reveal: { name: lm?.name, funFact: lm?.funFact } });
+                        return backend.updateState(sid, { phase: "reveal", reveal, leaderboard });
                     },
                     leaderboard: () => backend.updateState(sid, { phase: "leaderboard" }),
                     final: () => backend.updateState(sid, { phase: "final" }),

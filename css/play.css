@@ -1,0 +1,253 @@
+/* WV GeoGuess — phone page (play.html). Phone-first, no framework. */
+
+:root {
+    --navy: #002855;
+    --navy-2: #0b3d7a;
+    --gold: #eaaa00;
+    --ink: #111827;
+    --muted: #4b5563;
+    --paper: #ffffff;
+    --green: #15803d;
+    --red: #b91c1c;
+    --radius: 14px;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 18px;
+    line-height: 1.4;
+    color: var(--ink);
+}
+
+* { box-sizing: border-box; }
+
+html,
+body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    /* no pull-to-refresh, rubber-banding, or double-tap zoom on the page */
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+    background: var(--navy);
+}
+
+[hidden] { display: none !important; }
+
+/* ---- Map (always mounted underneath) ---------------------------------- */
+#map {
+    position: fixed;
+    inset: 0;
+    height: 100dvh;
+    width: 100%;
+    touch-action: none; /* the map handles its own gestures */
+}
+.map-loading {
+    position: fixed;
+    inset: 0;
+    display: none;
+    place-items: center;
+    background: rgba(255, 255, 255, 0.9);
+    font-weight: 600;
+    z-index: 5;
+}
+body.map-pending[data-screen="guess"] .map-loading { display: grid; }
+
+/* ---- Full-screen panels ------------------------------------------------ */
+.panel {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    overflow-y: auto;
+    background: linear-gradient(160deg, var(--navy) 0%, var(--navy-2) 100%);
+    color: #fff;
+    padding: calc(24px + var(--safe-top)) 20px calc(24px + var(--safe-bottom));
+}
+body[data-screen="guess"] .panel,
+body[data-screen="locked"] .panel,
+body[data-screen="timesup"] .panel,
+body[data-screen="result"] .panel { display: none; }
+
+.screen {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 14px;
+    max-width: 440px;
+    margin: 0 auto;
+    min-height: 100%;
+    justify-content: center;
+}
+body[data-screen="boot"] #screen-boot,
+body[data-screen="join"] #screen-join,
+body[data-screen="wait"] #screen-wait,
+body[data-screen="standings"] #screen-standings,
+body[data-screen="final"] #screen-final { display: flex; }
+
+.logo { width: 220px; max-width: 70%; background: #fff; border-radius: 12px; padding: 10px 14px; }
+h1 { font-size: 1.6rem; margin: 0; line-height: 1.2; }
+.lead { font-size: 1.15rem; margin: 0; }
+.muted { color: rgba(255, 255, 255, 0.8); margin: 0; }
+.small { font-size: 0.85rem; }
+.big-icon { font-size: 3.5rem; line-height: 1; }
+
+form { width: 100%; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+label { font-weight: 600; }
+input {
+    font-size: 1.2rem; /* >= 16px so iOS doesn't zoom on focus */
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 2px solid transparent;
+    width: 100%;
+}
+input:focus { outline: none; border-color: var(--gold); }
+.error { min-height: 1.4em; color: #fecaca; font-weight: 600; }
+
+.btn {
+    font: inherit;
+    font-weight: 700;
+    font-size: 1.15rem;
+    min-height: 56px;
+    border: 0;
+    border-radius: var(--radius);
+    padding: 12px 18px;
+    width: 100%;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn:disabled { cursor: default; opacity: 0.55; }
+.btn-primary { background: var(--gold); color: var(--navy); }
+.btn-confirm { background: var(--green); color: #fff; }
+.btn-confirm:disabled { background: #6b7280; opacity: 1; }
+.link { font: inherit; background: none; border: 0; color: var(--gold); text-decoration: underline; padding: 0 4px; cursor: pointer; }
+
+.standing {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    font-size: 1.15rem;
+}
+.standing strong { font-size: 1.6rem; color: var(--gold); }
+.champion { font-size: 1.3rem; }
+.champion strong { color: var(--gold); font-size: 1.6rem; display: block; }
+
+.top-list {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: rank;
+    text-align: left;
+}
+.top-list li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+.top-list li.me { background: rgba(234, 170, 0, 0.25); border-radius: 8px; font-weight: 700; }
+.top-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- Round chrome (over the map) -------------------------------------- */
+#topbar,
+#bottombar { display: none; }
+body[data-screen="guess"] #topbar,
+body[data-screen="locked"] #topbar,
+body[data-screen="timesup"] #topbar,
+body[data-screen="result"] #topbar,
+body[data-screen="guess"] #bottombar,
+body[data-screen="locked"] #bottombar,
+body[data-screen="timesup"] #bottombar,
+body[data-screen="result"] #bottombar { display: flex; }
+
+#topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    align-items: center;
+    gap: 10px;
+    padding: calc(8px + var(--safe-top)) 10px 8px;
+    background: rgba(0, 40, 85, 0.92);
+    color: #fff;
+}
+.photo-thumb {
+    flex: 0 0 auto;
+    padding: 0;
+    border: 2px solid #fff;
+    border-radius: 10px;
+    overflow: hidden;
+    width: 96px;
+    height: 64px;
+    background: #334155;
+    cursor: zoom-in;
+}
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.topbar-text { flex: 1 1 auto; min-width: 0; }
+.round-label { font-size: 0.8rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.04em; }
+.prompt { font-weight: 700; font-size: 1rem; line-height: 1.2; }
+.countdown {
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    font-size: 1.6rem;
+    min-width: 2.6em;
+    text-align: right;
+}
+.countdown.hurry { color: #fca5a5; }
+
+#bottombar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px calc(12px + var(--safe-bottom));
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
+}
+.status { text-align: center; font-weight: 600; }
+.status:empty { display: none; }
+body[data-screen="locked"] #confirm,
+body[data-screen="timesup"] #confirm,
+body[data-screen="result"] #confirm { display: none; }
+
+.result { text-align: center; }
+.result .headline { font-size: 1.35rem; font-weight: 800; }
+.result .line { font-size: 1.1rem; margin-top: 2px; }
+.result .answer { margin-top: 8px; }
+.result .fact { color: var(--muted); font-size: 0.95rem; margin-top: 4px; }
+
+/* ---- Photo enlarge ------------------------------------------------------ */
+.photo-full {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    max-width: 100vw;
+    max-height: 100dvh;
+    text-align: center;
+}
+.photo-full::backdrop { background: rgba(0, 0, 0, 0.9); }
+.photo-full img { max-width: 100vw; max-height: 85dvh; display: block; margin: 0 auto; }
+
+/* ---- Connection banner -------------------------------------------------- */
+.net-banner {
+    position: fixed;
+    top: calc(8px + var(--safe-top));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 30;
+    background: #92400e;
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: 600;
+}

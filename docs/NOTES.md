@@ -215,6 +215,58 @@ Freeze the config before doors open (Runbook, Phase 7).
 
 ---
 
+## 4d. Phase 4: the phone page
+
+| File | What it is |
+|---|---|
+| `play.html`, `css/play.css`, `js/play.js` | Phone page. There's no framework and no Tailwind: the play CDN is ~400 KB of JS and not meant for production. The join screen works before the multi-MB SDK finishes loading (`sdkReady()`), and the map loads in the background while the player types a name. |
+| `js/round.js` | **The host↔phone contract.** `scoreRound()` handles first-guess-per-player, the late cutoff (server time), ranks with ties, cumulative totals, and hidden names. It also defines the public JSON format. The Phase 5 host calls it as-is. |
+| `js/names.js` | Nickname rules: 2–20 characters, letters/numbers/spaces, and a light profanity filter. It allows Dickens, Hancock, Cummings, and Scunthorpe, and blocks "sh1t", "s.h.i.t", and "Kick Ass". |
+| `assets/answer.svg` | Answer marker (a target). |
+
+**Screens** follow the host's phase:
+
+| Host phase | Phone screen |
+|---|---|
+| (no name yet) | join |
+| no session / `lobby` | wait ("Eyes on the big screen") |
+| `guessing` | guess, or locked if already submitted |
+| `locked` | locked, or timesup |
+| `reveal` | result |
+| `leaderboard` | standings |
+| `final` | final |
+
+Only the host decides anything. The phone countdown is display-only, and **Confirm stays available until
+the phase changes**, so a phone whose clock runs fast can't cut itself off early. Late guesses are dropped
+by the host using server time.
+
+**Result line** (brief §3.2): "6.4 mi away · +773 pts · #1 this round · #1 overall", followed by the answer
+and fun fact. The map shows the player's pin, a dashed line, and the answer target.
+
+**Rules that Phase 5 must follow**
+- **Locking early** writes `roundEndsAt = lock time`. Every phone's countdown stops, and the lock time
+  (the late-guess cutoff) survives a host refresh.
+- Call `scoreRound()` only once per round. It throws if the leaderboard already includes that round.
+- **The host must not pause polling when its tab is hidden** (for example, when the presenter switches to
+  the slides). Pass `document: null` to `watchState`. This was found in testing: a hidden harness tab
+  never updated. The same testing exposed a bug where `document: null` was ignored because `??` treats
+  null as missing; it's fixed and has a test.
+
+**Found and fixed while testing on a 375×812 viewport**
+- `goTo()` with WGS84 graphics in a Web Mercator view treated degrees as meters and zoomed to level 23.
+  The reveal zoom now builds a Web Mercator extent, with a 3 km minimum.
+- `crypto.randomUUID()` doesn't exist on plain-http LAN addresses (phones testing against a dev PC), so
+  there's a `getRandomValues` fallback.
+
+**Test options.** `?poll=always` keeps a background player tab polling, for several player tabs in one
+browser. `tools/harness.html?role=host` now locks and reveals through `scoreRound()` with the real
+geodesic scorer, so it can stand in for the host until `host.html` exists.
+
+**Not yet measured:** cold-load time on cell data and on an older phone (brief §3.4). Do this during the
+venue test.
+
+---
+
 ## 4. Other things to know before changing code
 
 **Answer leaks and anti-cheat (brief §3.6)**
