@@ -1,15 +1,11 @@
 /* =============================================================================
- * ArcGIGuess — Configuration
+ * WV GeoGuess — Configuration
  * =============================================================================
- * This is the ONLY file you should need to edit to make ArcGIGuess your own.
+ * Forked from ArcGIGuess (https://github.com/aelhussiny/ArcGIGuess, MIT).
  *
- * ArcGIGuess is a "guess where it is" geography game built on the ArcGIS Maps SDK
- * for JavaScript. Players are shown a landmark's name and photo and must click
- * the map where they think it is. Points are awarded based on how close they get.
- *
- * Everything the game needs — the web map, the layer of landmarks, scoring rules,
- * languages, on-screen text, branding, and the optional leaderboard — is defined
- * below. Change the values, refresh the page, and the game updates.
+ * This is the file to edit for branding, data, scoring, and on-screen text.
+ * Players are shown a photo of a West Virginia location and must click the
+ * map where they think it is. Points are awarded based on how close they get.
  *
  * The object is exposed as a global (window.ARCGIGUESS_CONFIG) and is read by
  * script.js. Keep this file loaded BEFORE script.js in index.html.
@@ -21,14 +17,15 @@ window.ARCGIGUESS_CONFIG = {
      * ---------------------------------------------------------------------- */
 
     // The name of your game. Shown in the browser tab, share card, and messages.
-    appName: "ArcGIGuess",
+    // (Working title — final name is still an open decision.)
+    appName: "WV GeoGuess",
 
     // A short tagline used in the page title and as the default share-card footer.
-    tagline: "A geo-guessing game powered by the ArcGIS Maps SDK for JavaScript",
+    tagline: "How well do you know West Virginia?",
 
     // Text shown at the bottom of the shareable results card.
     // Set to null to fall back to `tagline`.
-    shareCardFooter: null,
+    shareCardFooter: "WVDOT GIS Day 2026",
 
     // Note: the logo, guess-pin, and README/social screenshot are plain files
     // in the /assets folder — just REPLACE them (keeping the same filenames)
@@ -43,25 +40,25 @@ window.ARCGIGUESS_CONFIG = {
 
     // The portal that hosts your web map. Leave null to use ArcGIS Online.
     // To use ArcGIS Enterprise, set this to your portal's URL, e.g.
-    // "https://gis.example.com/portal". The web map, its layers, and any
-    // sign-in prompts will all target this portal.
+    // "https://gis.example.com/portal".
     portalUrl: null,
 
-    // The ArcGIS web map that provides the basemap the player sees.
-    // This is the item ID of a web map in ArcGIS Online / Enterprise.
-    // If the web map is private, ArcGIS will automatically prompt the player
-    // to sign in when the app loads.
+    // TODO(Phase 3): replace with the WV web map once the landmark data exists.
+    // PLACEHOLDER: this is the upstream ArcGIGuess Dubai demo map. It keeps
+    // solo mode playable end to end until our own layers are published.
     webMapItemId: "707a71d354c540f78c2f9101eead4c09",
 
     // The title of the layer (inside the web map above) that holds your
     // landmarks. This layer is hidden during play — its features are the
     // "answers". Each feature should be a polygon (the landmark's footprint).
+    // TODO(Phase 3): "WV_GeoGuess_Landmarks" (the public solo-mode view).
     landmarkLayerTitle: "Dubai Landmarks",
 
     // Field names on the landmark layer.
     //   idField   — the unique ID field (used to fetch each landmark's photo).
-    //   The per-language name fields are defined in the `languages` array below.
+    //   nameField — the landmark's display name.
     landmarkIdField: "OBJECTID",
+    landmarkNameField: "name",
 
     // How many landmarks to play per game. Set to null to use every landmark
     // in the layer. If you have 40 landmarks and set this to 10, each game
@@ -78,70 +75,71 @@ window.ARCGIGUESS_CONFIG = {
     allowFinishEarly: true,
 
     /* -------------------------------------------------------------------------
-     * 3. SCORING
+     * 3. SCORING  (implemented in js/scoring.js)
      * ---------------------------------------------------------------------- */
     // The intro text shown to players is generated automatically from these
     // values, so the explanation can never drift out of sync with the rules.
     //
-    // How it works: a guess inside the landmark polygon (or within `bucketMeters`
-    // of it) scores the full `pointsForHit`. Beyond that, the player loses
-    // `penaltyPerBucket` point(s) for every `bucketMeters` they are off, never
-    // dropping below `minScore`.
+    // A guess inside the landmark polygon always scores `maxPoints` and counts
+    // as "found". Otherwise the distance (in miles) from the guess to the
+    // polygon's edge sets the score:
+    //   exponential — round(maxPoints · e^(−miles / scaleMiles)).
+    //                 With scaleMiles 25: 5 mi ≈ 819, 10 ≈ 670, 25 ≈ 368,
+    //                 50 ≈ 135, 100 ≈ 18.
+    //   bands       — lose `penaltyPerBand` for every full `bandMiles` off,
+    //                 never dropping below `minScore`.
     scoring: {
-        pointsForHit: 10, // Points for a perfect / very close guess.
-        bucketMeters: 500, // Size of each distance "band", in meters.
-        penaltyPerBucket: 1, // Points lost per band you are off.
-        minScore: 0, // The lowest a single round can score.
+        mode: "exponential", // "exponential" | "bands"
+        maxPoints: 1000,
+        exponential: {
+            scaleMiles: 25,
+        },
+        bands: {
+            bandMiles: 5,
+            penaltyPerBand: 40, // hits 0 at 125 mi — about half the state's width
+            minScore: 0,
+        },
+        // Distances are geodesic (true ground distance), not planar Web
+        // Mercator, which overstates WV distances ~1.28x. See js/scoring.js.
     },
 
     /* -------------------------------------------------------------------------
-     * 4. LANGUAGES
+     * 4. ON-SCREEN TEXT
      * ---------------------------------------------------------------------- */
-    // ArcGIGuess is multilingual. The first language in this array is the default.
-    // A toggle button lets players switch between them. To go English-only,
-    // simply delete the second entry. To use a different second language,
-    // replace the Arabic entry with your own.
-    //
-    // Each language defines:
-    //   code             — a short language code (used for <html lang> and Survey123).
-    //   dir              — text direction: "ltr" or "rtl".
-    //   toggleLabel      — what the switch-language button says while THIS
-    //                      language is active (usually the name of the OTHER language).
-    //   landmarkNameField— the field on the landmark layer holding the name in
-    //                      this language.
-    //   surveyLang       — (optional) language code to pass to the Survey123
-    //                      form so it opens in this language. Leave null if not needed.
-    //   strings          — every piece of on-screen text, in this language.
-    //                      Placeholders in {curly braces} are filled in by the app.
+    // English only. Upstream's multi-language `languages` array is kept with a
+    // single entry; with only one language, the toggle button hides itself.
+    // Placeholders in {curly braces} are filled in by the app.
     languages: [
         {
             code: "en",
             dir: "ltr",
-            toggleLabel: "العربية",
-            landmarkNameField: "name",
+            toggleLabel: "",
             surveyLang: null,
             strings: {
-                welcomeTitle: "Welcome to ArcGIGuess!",
+                welcomeTitle: "WV GeoGuess",
                 // {scoringSummary} is generated from the `scoring` block above.
                 welcomeDesc:
-                    "Test your knowledge! We'll show you the name and a picture of a landmark, and you click on the map where you think it is.<br><br>{scoringSummary}",
-                // Template for the auto-generated scoring explanation.
-                // Placeholders: {points} {bucket} {penalty} {min}
-                scoringSummaryTemplate:
-                    "- Find it (or within {bucket}m): <strong>+{points} points</strong><br>- Then <strong>-{penalty} point</strong> for every {bucket}m you're off, down to {min}.",
+                    "We'll show you a place in West Virginia. Click the map where you think it is.<br><br>{scoringSummary}",
+                // Scoring explanation templates, one per mode.
+                // exponential placeholders: {points} {p10} {p25} {p50}
+                scoringSummaryExponential:
+                    "- Pin it inside the spot: <strong>{points} points</strong><br>- Miss, and points shrink with distance: 10&nbsp;mi&nbsp;≈&nbsp;{p10}, 25&nbsp;mi&nbsp;≈&nbsp;{p25}, 50&nbsp;mi&nbsp;≈&nbsp;{p50}",
+                // bands placeholders: {points} {band} {penalty} {min}
+                scoringSummaryBands:
+                    "- Pin it (or within {band}&nbsp;mi): <strong>{points} points</strong><br>- Then <strong>−{penalty}</strong> for every {band}&nbsp;mi you're off, down to {min}.",
                 startButton: "Start Game",
-                loadingText: "Loading Landmarks...",
-                findLandmarkText: "Find this landmark:",
+                loadingText: "Loading...",
+                findLandmarkText: "Where in West Virginia is this?",
                 scoreDisplay: "Score: {score}",
                 roundDisplay: "Round {current} / {total}",
                 confirmButton: "Confirm Guess",
-                correctTitle: "Correct!",
+                correctTitle: "Nailed it!",
                 correctMessage:
-                    "Well done! You earned <strong>+{roundScore} points</strong>.",
-                incorrectTitle: "Oh, so close!",
+                    "Right on target. You earned <strong>+{roundScore} points</strong>.",
+                incorrectTitle: "Not quite!",
                 incorrectMessage:
-                    "You were <strong>{distance}m</strong> away. You earned <strong>{roundScore} points</strong>. Here's the correct location.",
-                nextButton: "Next Landmark",
+                    "You were <strong>{distance} mi</strong> away. You earned <strong>+{roundScore} points</strong>. Here's the correct location.",
+                nextButton: "Next Location",
                 finishEarlyButton: "Finish early",
                 finishEarlyConfirm: "Tap again to end game",
                 gameOverButton: "Show Results",
@@ -149,12 +147,12 @@ window.ARCGIGUESS_CONFIG = {
                 finalScoreText: "Here are your results:",
                 totalScoreLabel: "Total Score",
                 accuracyLabel: "Accuracy",
-                foundLabel: "Landmarks Found",
+                foundLabel: "Places Found",
                 playAgainButton: "Play Again",
                 shareButton: "Share Results",
                 // {score}, {appName}, and {url} (from social.url) are available.
                 shareText:
-                    "I scored {score} points in {appName}! How much can you score? Play at {url}",
+                    "I scored {score} points in {appName}! How well do you know West Virginia? Play at {url}",
                 shareCardTitle: "My {appName} Score!",
                 shareCardScoreLabel: "Total Score",
                 shareCardAccuracyLabel: "Accuracy",
@@ -175,119 +173,51 @@ window.ARCGIGUESS_CONFIG = {
                 points: "points",
             },
         },
-        {
-            code: "ar",
-            dir: "rtl",
-            toggleLabel: "English",
-            landmarkNameField: "name_ar",
-            surveyLang: "ar",
-            strings: {
-                welcomeTitle: "أهلاً بك في ArcGIGuess!",
-                welcomeDesc:
-                    "اختبر معرفتك! سنعرض لك اسم وصورة معلم وعليك النقر على الخريطة حيث تعتقد أنه يقع.<br><br>{scoringSummary}",
-                scoringSummaryTemplate:
-                    "- إجابة صحيحة (أو ضمن {bucket}م): <strong>+{points} نقاط</strong><br>- ثم <strong>-{penalty} نقطة</strong> عن كل {bucket}م بعيداً، حتى {min}.",
-                startButton: "ابدأ اللعبة",
-                loadingText: "جاري تحميل المعالم...",
-                findLandmarkText: "ابحث عن هذا المعلم:",
-                scoreDisplay: "النتيجة: {score}",
-                roundDisplay: "الجولة {current} / {total}",
-                confirmButton: "تأكيد الإجابة",
-                correctTitle: "إجابة صحيحة!",
-                correctMessage:
-                    "أحسنت! لقد ربحت <strong>+{roundScore} نقاط</strong>.",
-                incorrectTitle: "أوه, قريبة جداً!",
-                incorrectMessage:
-                    "كنت بعيداً مسافة <strong>{distance}م</strong>. لقد ربحت <strong>{roundScore} نقاط</strong>. هذا هو الموقع الصحيح.",
-                nextButton: "المعلم التالي",
-                finishEarlyButton: "إنهاء مبكر",
-                finishEarlyConfirm: "انقر مجدداً لإنهاء اللعبة",
-                gameOverButton: "أظهر النتائج",
-                gameOverTitle: "انتهت اللعبة!",
-                finalScoreText: "ها هي نتيجتك:",
-                totalScoreLabel: "النتيجة الإجمالية",
-                accuracyLabel: "الدقة",
-                foundLabel: "المعالم التي عثرت عليها",
-                playAgainButton: "العب مجدداً",
-                shareButton: "شارك النتيجة",
-                shareText:
-                    "لقد سجلت {score} نقطة في {appName}! كم يمكنك أن تسجّل؟ العب على {url}",
-                shareCardTitle: "نتيجتي في ArcGIGuess!",
-                shareCardScoreLabel: "النتيجة الإجمالية",
-                shareCardAccuracyLabel: "الدقة",
-                shareModalTitle: "شارك نتيجتك!",
-                shareModalDesc:
-                    "انقر بزر الماوس الأيمن أو اضغط مطولاً على الصورة لحفظها ومشاركتها.",
-                webMapError: "لم نتمكن من تحميل الخريطة. يرجى التحقق من المعرف.",
-                layerError:
-                    "لم نتمكن من العثور على طبقة المعالم في الخريطة. تحقق من عنوان الطبقة في config.js.",
-                submitScoreButton: "إرسال النتيجة",
-                viewLeaderboardButton: "قائمة المتصدرين",
-                submitModalTitle: "إرسال نتيجتك",
-                leaderboardModalTitle: "أعلى النتائج",
-                leaderboardLoadingText: "جاري تحميل قائمة المتصدرين...",
-                leaderboardError:
-                    "لا يمكن تحميل قائمة المتصدرين. يرجى المحاولة لاحقاً.",
-                noScores: "لم يتم إرسال أي نتائج بعد.",
-                points: "نقاط",
-            },
-        },
     ],
 
     /* -------------------------------------------------------------------------
      * 5. SOCIAL SHARING (link previews)
      * ---------------------------------------------------------------------- */
-    // Controls the preview card shown when your game's LINK is shared on
-    // WhatsApp, LinkedIn, Facebook, X/Twitter, Slack, iMessage, etc.
+    // Controls the preview card shown when the game's LINK is shared.
     //
-    // ⚠️ IMPORTANT: those services scrape your page WITHOUT running JavaScript,
-    // so they read the <meta> tags in index.html — not this file. The values
-    // below are mirrored into those tags at runtime (handy for local use and
-    // JS-aware tools), but for guaranteed link previews you should ALSO paste
-    // the same values into the matching <meta> tags in index.html <head>.
-    // See the README's "Social sharing" section.
+    // ⚠️ Link-preview crawlers do NOT run JavaScript, so they read the <meta>
+    // tags in index.html — not this file. Keep the two in sync.
+    //
+    // TODO(Phase 7): hosting is still an open decision (GitHub Pages vs. an
+    // agency server). These assume GitHub Pages on the Sevin47/WV-GeoGuess
+    // fork; update url/image if that changes, and replace the screenshot.
     social: {
-        // Headline shown on the preview card.
-        title: "ArcGIGuess — Can you find the landmark?",
-        // One-line description under the headline.
+        title: "WV GeoGuess — How well do you know West Virginia?",
         description:
-            "A quick geo-guessing game: we show you a landmark, you pin it on the map. How well do you know the area?",
-        // Preview image. Use an ABSOLUTE URL for reliable previews.
-        // Recommended size: ~1200×630px. Reusing the README screenshot here.
-        image: "https://aelhussiny.github.io/ArcGIGuess/assets/screenshot.png",
-        // The public URL where the game is hosted (used for og:url).
-        url: "https://aelhussiny.github.io/ArcGIGuess",
-        // Your X/Twitter handle including the @ (optional).
+            "A quick geo-guessing game from WVDOT GIS Day: we show you a place in West Virginia, you pin it on the map.",
+        image: "https://sevin47.github.io/WV-GeoGuess/assets/screenshot.png",
+        url: "https://sevin47.github.io/WV-GeoGuess/",
         twitterHandle: "",
     },
 
     /* -------------------------------------------------------------------------
-     * 6. LEADERBOARD (optional)
+     * 6. LEADERBOARD (optional — solo-mode fallback only)
      * ---------------------------------------------------------------------- */
-    // ArcGIGuess can let players submit their score through an ArcGIS Survey123
-    // form and view a public leaderboard. This is completely optional.
+    // Solo mode can let players submit their score through an ArcGIS Survey123
+    // form and view a public leaderboard. The live event uses host.html's own
+    // leaderboard instead; this is for Fallback A (brief §7).
     //
-    // Set `enabled: false` to hide the "Submit Score" and "Leaderboard" buttons
-    // entirely — the game works fine without it.
-    //
-    // To use it you need:
-    //   1. A Survey123 form that collects a name and a score.
-    //   2. A public (or shared) view of that form's feature layer to read scores from.
+    // DISABLED until we publish our own Survey123 form (Phase 3). The upstream
+    // values pointed at the original author's survey — we must not send WV
+    // scores there.
     leaderboard: {
-        enabled: true,
+        enabled: false,
 
-        // The share URL of your Survey123 form.
-        survey123Url:
-            "https://survey123.arcgis.com/share/c4317eb262934df4b2fe38cb42a3d1d1",
+        // TODO(Phase 3): the share URL of our Survey123 form.
+        survey123Url: "",
 
         // The Survey123 field to pre-fill with the player's score.
         // Format is "field:<your_field_name>".
         submitScoreFieldId: "field:score",
 
-        // The FeatureServer query endpoint used to READ the leaderboard.
-        // Point this at a public view of your survey's results layer.
-        dataApiUrl:
-            "https://services1.arcgis.com/zu8dBGfmKCvrZHh2/arcgis/rest/services/survey123_c4317eb262934df4b2fe38cb42a3d1d1_results/FeatureServer/0/query",
+        // TODO(Phase 3): FeatureServer /query URL of a public view of the
+        // survey's results layer.
+        dataApiUrl: "",
 
         // The fields in that layer used to display the leaderboard.
         firstNameField: "first_name",

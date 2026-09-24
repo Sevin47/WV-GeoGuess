@@ -91,10 +91,15 @@ input SR. Measured with real WV points:
 | Capitol → Morgantown | 126.14 mi | 162.40 mi (**×1.287**) | 126.09 mi (−0.04%) |
 | Charleston → Huntington | 44.38 mi | 56.54 mi (**×1.274**) | 44.36 mi (−0.03%) |
 
-**Fix for Phase 1:** `projectOperator.execute(geom, {wkid: 26917})` both the polygon and the guess, then
-use `containsOperator` and planar `distanceOperator` in meters. This handles the point-to-polygon-edge case
-directly and stays within 0.04% of geodetic statewide. (`geodeticDistanceOperator` also exists, but for
-point-to-polygon it would need a nearest-coordinate step first. UTM is simpler.)
+**What Phase 1 shipped:** geodesic distance, not UTM 17N. `js/scoring.js` uses
+`geodesicProximityOperator.getNearestCoordinate(polygon, point).distance`. That's the geodesic distance, in
+meters, to the nearest point on the polygon, and it's the same whether the input is WGS84 or Web Mercator.
+It agrees with planar UTM 17N to within 0.04% in WV.
+
+UTM was tried first and dropped. `projectOperator.execute(geom, {wkid: 26917})` **returns `null` for
+geometry outside zone 17.** The Dubai placeholder data (55°E) crashed `confirmGuess()`, and any test data
+outside WV would do the same. The geodesic approach works everywhere and needs no SR config.
+`containsOperator` still runs in the data's own SR, which is fine for inside/outside tests.
 
 ### 3.3 Operators available in 5.1
 
@@ -159,7 +164,7 @@ Confirmed via `$arcgis.import` in the running page:
 | Upstream piece | Fate |
 |---|---|
 | `config.js` structure | **Keep** (Phase 1): WV branding, `en` only, miles, `scoring.mode`, placeholder web map ID. |
-| `confirmGuess()` scoring math | → `js/scoring.js` (Phase 2), with exponential + bands modes and the UTM 17N projection. |
+| `confirmGuess()` scoring math | → `js/scoring.js`. **Done in Phase 1**, with exponential and bands modes and geodesic distance. |
 | `init()` map bootstrap | → `js/map.js` (Phase 2): web map load, WV constraints, no-label basemap. |
 | Pin symbol + drop animation | **Reuse** in `play.html`. It's good UX already. |
 | Share card / html2canvas | Solo only. Optional for `play.html` final standing. |

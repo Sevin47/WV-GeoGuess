@@ -3,13 +3,13 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>ArcGIGuess</title>
+        <title>WV GeoGuess</title>
 
         <meta
             name="description"
-            content="A quick geo-guessing game: we show you a landmark, you pin it on the map."
+            content="A quick geo-guessing game from WVDOT GIS Day: we show you a place in West Virginia, you pin it on the map."
         />
-        <meta name="theme-color" content="#2563eb" />
+        <meta name="theme-color" content="#002855" />
 
         <link rel="icon" href="./assets/logo.svg" type="image/svg+xml" />
 
@@ -18,33 +18,34 @@
              JavaScript, so THESE static values are what they read. Keep them in
              sync with the `social` block in config.js. See the README. -->
         <meta property="og:type" content="website" />
-        <meta property="og:site_name" content="ArcGIGuess" />
+        <meta property="og:site_name" content="WV GeoGuess" />
         <meta
             property="og:title"
-            content="ArcGIGuess — Can you find the landmark?"
+            content="WV GeoGuess — How well do you know West Virginia?"
         />
         <meta
             property="og:description"
-            content="A quick geo-guessing game: we show you a landmark, you pin it on the map. How well do you know the area?"
+            content="A quick geo-guessing game from WVDOT GIS Day: we show you a place in West Virginia, you pin it on the map."
         />
-        <meta property="og:image" content="https://aelhussiny.github.io/ArcGIGuess/assets/screenshot.png" />
+        <meta property="og:image" content="https://sevin47.github.io/WV-GeoGuess/assets/screenshot.png" />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
-        <meta property="og:url" content="https://aelhussiny.github.io/ArcGIGuess" />
+        <meta property="og:url" content="https://sevin47.github.io/WV-GeoGuess/" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta
             name="twitter:title"
-            content="ArcGIGuess — Can you find the landmark?"
+            content="WV GeoGuess — How well do you know West Virginia?"
         />
         <meta
             name="twitter:description"
-            content="A quick geo-guessing game: we show you a landmark, you pin it on the map. How well do you know the area?"
+            content="A quick geo-guessing game from WVDOT GIS Day: we show you a place in West Virginia, you pin it on the map."
         />
-        <meta name="twitter:image" content="https://aelhussiny.github.io/ArcGIGuess/assets/screenshot.png" />
+        <meta name="twitter:image" content="https://sevin47.github.io/WV-GeoGuess/assets/screenshot.png" />
         <meta name="twitter:site" content="" />
         <meta name="twitter:creator" content="" />
 
-        <script src="https://cdn.tailwindcss.com"></script>
+        <!-- Tailwind play CDN, pinned (the bare URL floats to the latest 3.x). -->
+        <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 
         <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -67,7 +68,6 @@
                 aria-label="Switch language"
                 class="absolute top-4 right-4 z-20 bg-white shadow-lg rounded-full p-3 text-sm font-medium hover:bg-gray-100 transition"
             >
-                العربية
             </button>
 
             <div id="ui-overlay" class="p-4">
@@ -79,18 +79,17 @@
                         id="start-logo"
                         src="./assets/logo.svg"
                         alt="App Logo"
-                        class="w-24 h-auto mb-4"
+                        class="w-48 h-auto mb-4"
                     />
                     <h1
                         id="welcome-title"
                         class="text-3xl font-bold text-gray-800 mb-4"
                     >
-                        Welcome to ArcGIGuess!
+                        WV GeoGuess
                     </h1>
                     <p id="welcome-desc" class="text-gray-600 mb-8">
-                        Test your knowledge! We'll show you the name of a
-                        landmark, and you have to click on the map where you
-                        think it is.
+                        We'll show you a place in West Virginia. Click the
+                        map where you think it is.
                     </p>
                     <button
                         id="start-button"
@@ -108,7 +107,7 @@
                         id="loading-text"
                         class="text-2xl font-semibold text-gray-700"
                     >
-                        Loading Landmarks...
+                        Loading...
                     </h2>
                     <div
                         class="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto mt-6"
@@ -130,7 +129,7 @@
                         <img
                             id="landmark-image"
                             src=""
-                            alt="Landmark"
+                            alt="Photo of the location to find"
                             class="hidden w-full h-full object-cover rounded-t-xl"
                         />
                     </div>
@@ -140,7 +139,7 @@
                             id="find-landmark-text"
                             class="text-center text-gray-600"
                         >
-                            Find this landmark:
+                            Where in West Virginia is this?
                         </p>
                         <h2
                             id="landmark-name"
@@ -189,7 +188,7 @@
                         id="next-button"
                         class="btn btn-primary w-full text-lg"
                     >
-                        Next Landmark
+                        Next Location
                     </button>
                 </div>
 
@@ -235,7 +234,7 @@
                             <span
                                 id="found-label"
                                 class="block text-sm text-amber-700 font-medium"
-                                >Landmarks Found</span
+                                >Places Found</span
                             >
                             <span
                                 id="found-count"
@@ -387,13 +386,13 @@
                         id="share-card-title"
                         class="text-xl font-bold text-gray-800"
                     >
-                        My Landmark Score!
+                        My WV GeoGuess Score!
                     </h3>
                     <img
                         id="share-logo"
                         src="./assets/logo.svg"
                         alt="App Logo"
-                        class="w-24 h-auto"
+                        class="w-32 h-auto"
                     />
                 </div>
                 <div class="mt-4 text-center">
@@ -426,7 +425,7 @@
                             <span
                                 id="share-card-found-label"
                                 class="block text-sm text-amber-700 font-medium"
-                                >Landmarks Found</span
+                                >Places Found</span
                             >
                             <span
                                 id="share-card-found"
@@ -436,13 +435,13 @@
                         </div>
                     </div>
                     <p class="text-xs text-gray-500 mt-4" id="share-card-footer">
-                        ArcGIGuess
+                        WVDOT GIS Day 2026
                     </p>
                 </div>
             </div>
         </div>
 
-        <!-- Game configuration. Edit config.js to make ArcGIGuess your own. -->
+        <!-- Game configuration. Edit config.js to change branding, data, and scoring. -->
         <script src="config.js"></script>
         <script type="module" src="script.js"></script>
     </body>

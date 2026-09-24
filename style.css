@@ -83,11 +83,12 @@ body,
     transform: scale(0.95); /* active:scale-95 */
 }
 
+/* WV navy (placeholder palette — swap for official WVDOT colors) */
 .btn-primary {
-    background-color: #2563eb; /* bg-blue-600 */
+    background-color: #002855;
 }
 .btn-primary:hover {
-    background-color: #1d4ed8; /* hover:bg-blue-700 */
+    background-color: #0b3d7a;
 }
 
 .btn-secondary {

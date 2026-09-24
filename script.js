@@ -1,5 +1,5 @@
 /* =============================================================================
- * ArcGIGuess — Game logic
+ * WV GeoGuess — Solo game logic (forked from ArcGIGuess)
  * =============================================================================
  * A "guess where it is" geography game built on the ArcGIS Maps SDK for
  * JavaScript. Players see a landmark's name and photo and click the map where
@@ -18,7 +18,10 @@
  *
  * Core modules are loaded from the ArcGIS CDN via the global `$arcgis.import()`
  * helper, and the map is rendered by the <arcgis-map> web component.
+ * Scoring math lives in js/scoring.js.
  * ========================================================================== */
+import { createScorer, formatMiles, pointsForMiles } from "./js/scoring.js";
+
 $arcgis
     .import([
         "@arcgis/core/config.js",
@@ -26,15 +29,19 @@ $arcgis
         "@arcgis/core/Graphic.js",
         "@arcgis/core/request.js",
         "@arcgis/core/geometry/operators/containsOperator.js",
-        "@arcgis/core/geometry/operators/distanceOperator.js",
+        "@arcgis/core/geometry/operators/geodesicProximityOperator.js",
     ])
-    .then(([esriConfig, WebMap, Graphic, esriRequest, containsOperator, distanceOperator]) => {
+    .then(([esriConfig, WebMap, Graphic, esriRequest, containsOperator, geodesicProximityOperator]) => {
         // -------------------------------------------------------------------
         // All settings live in config.js (exposed as window.ARCGIGUESS_CONFIG).
         // Edit THAT file — not this one — to make the game your own.
         // -------------------------------------------------------------------
         const CONFIG = window.ARCGIGUESS_CONFIG;
         const LEADERBOARD = CONFIG.leaderboard;
+        const scorer = createScorer(
+            { containsOperator, geodesicProximityOperator },
+            CONFIG.scoring
+        );
 
         // --- DOM Elements ---
         const $ = (id) => document.getElementById(id);
@@ -174,11 +181,19 @@ $arcgis
          */
         function buildScoringSummary() {
             const s = CONFIG.scoring;
-            return t("scoringSummaryTemplate", {
-                points: s.pointsForHit,
-                bucket: s.bucketMeters,
-                penalty: s.penaltyPerBucket,
-                min: s.minScore,
+            if (s.mode === "bands") {
+                return t("scoringSummaryBands", {
+                    points: s.maxPoints,
+                    band: s.bands.bandMiles,
+                    penalty: s.bands.penaltyPerBand,
+                    min: s.bands.minScore,
+                });
+            }
+            return t("scoringSummaryExponential", {
+                points: s.maxPoints,
+                p10: pointsForMiles(10, false, s),
+                p25: pointsForMiles(25, false, s),
+                p50: pointsForMiles(50, false, s),
             });
         }
 
@@ -315,7 +330,7 @@ $arcgis
             if (gameState === "PLAYING") {
                 const landmark = allLandmarks[currentLandmarkIndex];
                 $("landmark-name").innerText =
-                    landmark.attributes[currentLang().landmarkNameField];
+                    landmark.attributes[CONFIG.landmarkNameField];
             }
         }
 
@@ -378,9 +393,11 @@ $arcgis
                     return;
                 }
 
-                // Hide the answer layer, then wait for the view and game data.
+                // Hide the answer layer, then wait for the view, the
+                // projection engine (used by scoring), and game data.
                 landmarksLayer.visible = false;
                 await mapEl.viewOnReady();
+                await scorer.load();
                 await loadGameData();
 
                 console.log("Map view ready and game data loaded.");
@@ -400,12 +417,9 @@ $arcgis
             try {
                 const query = landmarksLayer.createQuery();
                 query.where = "1=1"; // Get all features
-                // Request the name field for every configured language, plus the ID field.
-                const nameFields = CONFIG.languages.map(
-                    (l) => l.landmarkNameField
-                );
                 query.outFields = [
-                    ...new Set([...nameFields, CONFIG.landmarkIdField]),
+                    CONFIG.landmarkNameField,
+                    CONFIG.landmarkIdField,
                 ];
                 query.returnGeometry = true;
 
@@ -506,8 +520,7 @@ $arcgis
             resetFinishEarly();
 
             const landmark = allLandmarks[currentLandmarkIndex];
-            const name =
-                landmark.attributes[currentLang().landmarkNameField];
+            const name = landmark.attributes[CONFIG.landmarkNameField];
             const imageUrl = landmark.attributes.imageUrl;
 
             $("landmark-name").innerText = name;
@@ -519,7 +532,9 @@ $arcgis
                 imageElements.spinner.classList.remove("hidden"); // Show spinner
 
                 imageElements.image.src = imageUrl;
-                imageElements.image.alt = name;
+                // Neutral alt text: the name would give the answer away once
+                // prompts are photo-only (brief §3.6).
+                imageElements.image.alt = "Photo of the location to find";
                 imageElements.image.onload = () => {
                     imageElements.image.classList.remove("hidden");
                     imageElements.spinner.classList.add("hidden");
@@ -599,47 +614,18 @@ $arcgis
             const targetLandmark = allLandmarks[currentLandmarkIndex];
             const targetPolygon = targetLandmark.geometry;
 
-            const isInside = containsOperator.execute(
-                targetPolygon,
-                clickedPoint
-            );
+            // Geodesic distance, not planar Web Mercator — see js/scoring.js.
+            const result = scorer.scoreGuess(targetPolygon, clickedPoint);
+            const roundScore = result.points;
 
-            let roundScore = 0;
-            let distanceInMeters = 0;
-            const scoring = CONFIG.scoring;
-
-            if (isInside) {
-                // A direct hit always earns the maximum.
-                roundScore = scoring.pointsForHit;
-            } else {
-                distanceInMeters = distanceOperator.execute(
-                    targetPolygon,
-                    clickedPoint,
-                    { unit: "meters" }
-                );
-
-                // Lose `penaltyPerBucket` points for each full `bucketMeters`
-                // band the guess is off, never dropping below `minScore`.
-                const bands = Math.floor(
-                    distanceInMeters / scoring.bucketMeters
-                );
-                const penalty = bands * scoring.penaltyPerBucket;
-                roundScore = Math.max(
-                    scoring.minScore,
-                    scoring.pointsForHit - penalty
-                );
-            }
-
-            // A guess earns "full marks" either by landing inside the polygon or
-            // by being close enough that no penalty applies. Either way it counts
-            // as a find — for both the message shown and the accuracy stat — so
-            // the two can never contradict each other.
-            const gotFullPoints = roundScore === scoring.pointsForHit;
+            // Only a guess inside the polygon counts as "found" — for both the
+            // message shown and the accuracy stat — so they can't contradict.
+            const found = result.inside;
 
             let resultTitle;
             let resultMessage;
             let resultSymbol;
-            if (gotFullPoints) {
+            if (found) {
                 resultTitle = t("correctTitle");
                 resultMessage = t("correctMessage", { roundScore: roundScore });
                 resultSymbol = correctSymbol;
@@ -647,7 +633,7 @@ $arcgis
             } else {
                 resultTitle = t("incorrectTitle");
                 resultMessage = t("incorrectMessage", {
-                    distance: Math.round(distanceInMeters),
+                    distance: formatMiles(result.miles),
                     roundScore: roundScore,
                 });
                 resultSymbol = incorrectSymbol;
@@ -658,7 +644,7 @@ $arcgis
 
             $("round-result-title").innerText = resultTitle;
             $("round-result-message").innerHTML = resultMessage;
-            $("round-result-title").style.color = gotFullPoints
+            $("round-result-title").style.color = found
                 ? "#16a34a"
                 : "#dc2626";
 
