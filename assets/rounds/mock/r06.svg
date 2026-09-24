@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(0,55%,55%)"/><stop offset="1" stop-color="hsl(40,55%,30%)"/></linearGradient></defs>
+  <rect width="1600" height="900" fill="url(#g)"/>
+  <path d="M0 700 L300 450 L520 620 L800 380 L1100 640 L1350 480 L1600 650 L1600 900 L0 900Z" fill="rgba(0,0,0,0.25)"/>
+  <text x="800" y="430" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="96" font-weight="700" fill="#fff">Test photo 6</text>
+  <text x="800" y="520" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="40" fill="rgba(255,255,255,.85)">mock backend placeholder</text>
+</svg>

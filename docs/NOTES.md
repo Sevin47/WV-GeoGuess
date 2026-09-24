@@ -111,6 +111,66 @@ Confirmed via `$arcgis.import` in the running page:
 - `geodeticDistanceOperator`, `geodeticLengthOperator`: `execute`, `load`, `isLoaded`
 - `proximityOperator`, `geodesicProximityOperator`: `getNearestCoordinate` and related
 
+### 3.4 View constraints behave differently from what the docs suggest (SDK 5.1.25)
+
+Found while building `js/map.js` in Phase 2, and confirmed one variable at a time in the running page:
+
+| What we tried | What happened |
+|---|---|
+| `mapEl.constraints = { … }` (new object) | Drops the zoom levels taken from the basemap. Reading `view.zoom` then throws `reading 'scaleToZoom'`. **Mutate `view.constraints` instead.** |
+| `constraints.minZoom = 7.45` (fractional) | Throws `reading 'scale'`. It's used as an LOD index. |
+| `constraints.minScale = <fit scale>` | The effective limit snaps to the next *more zoomed-in* LOD (even `minScale` = LOD 7 → LOD 8), so the statewide fit itself is blocked. |
+| `constraints.minZoom = floor(fit zoom)` | **Works.** It allows the fit and at most one zoom level beyond it. This is what `constrainToWV()` uses. |
+| `constraints.geometry = <extent>` | Limits only the view's **center**, not the visible extent. |
+
+`constrainToWV()` recomputes `minZoom` whenever the map is resized (phone rotation, the URL bar collapsing)
+without moving the view.
+
+### 3.5 ArcGIS REST edit details (checked against the REST docs, 2026-09-24)
+
+- `addFeatures` and `updateFeatures` are POST requests. They return `{addResults|updateResults: [{objectId,
+  success, error}]}`. `updateFeatures` identifies the row by the object ID field inside `attributes`.
+- **There is no `inSR` parameter.** Guess geometry must already be in the guesses layer's SR.
+  `js/backend.js` converts lon/lat to Web Mercator (`agol.guessLayerWkid: 102100`). Phase 3 must confirm
+  that the hosted layer really is 102100.
+- Errors come back as HTTP 200 with `{error: {code, message}}`, and the adapter checks for this.
+- The object ID field name varies (`OBJECTID` vs `ObjectId`), so the adapter reads `objectIdFieldName`
+  from each query response.
+
+---
+
+## 4b. Phase 2 modules
+
+| Module | What it is |
+|---|---|
+| `js/scoring.js` | Points and distance (Phase 1). |
+| `js/backend.js` | Adapter interface split by **role**: player = `getState`, `submitGuess`. Host = `getState`, `createSession`, `updateState`, `listGuesses`, `countGuesses`, `getLandmarks`. Two implementations, `mock` and `agol`. Also `watchState()`, which polls with jitter, runs slower in the lobby, pauses while the tab is hidden, and backs off on errors. No SDK imports, so it's unit-tested in Node. |
+| `js/map.js` | Pin symbol and drop animation (moved from `script.js`), `loadWebMap()` for solo mode, `setupWVMap()` (keyless no-label basemap, WV outline, county lines, dimmed surroundings), and `constrainToWV()`. |
+| `tools/harness.html` | Dev page for the backend. Open `?role=host` in one tab and `?role=player` in others. |
+| `data/wv-boundary.geojson`, `data/wv-counties.geojson` | Census TIGERweb 2020 (State_County layers 54/55), simplified to ~0.002° (~200 m). 19 KB and 108 KB. |
+| `data/mock/landmarks.geojson`, `assets/rounds/mock/` | Six **approximate** WV test landmarks and placeholder photos, for the mock backend only. |
+
+**Mock backend design.** The brief says "in-memory + BroadcastChannel". The mock stores data in
+**localStorage**, which all tabs of the same site share and which survives a host refresh, so recovery
+(brief §3.2) can be tested. The BroadcastChannel carries "something changed" hints so other tabs update
+immediately. Each guess gets its own storage key, so tabs writing at the same time can't overwrite each
+other. If localStorage is unavailable, the mock falls back to memory, which only works within one tab.
+
+**Safety rails (brief §9).**
+- The `agol` adapter refuses host writes to any session that doesn't start with `test-`, unless
+  `CONFIG.live.allowProductionWrites` is true.
+- Session IDs are checked against a safe character set before they go into SQL `where` clauses.
+- Oversized reveal and leaderboard JSON fails loudly in both adapters.
+
+**Open items for later phases**
+- **Clock skew.** Phones draw the countdown from the host's `roundEndsAt` using their own clocks, so a few
+  seconds of skew is possible. The host's lock time is what counts, so this only affects the display.
+  Consider estimating the offset in Phase 4.
+- **"N guesses in"** counts raw guesses (`countGuesses`), not distinct players. Deduplicate in Phase 5 if
+  needed.
+- **Late-guess rule.** "First guess per player, drop guesses later than lock + 3 s" belongs in the host
+  scoring step (Phase 5).
+
 ---
 
 ## 4. Other things to know before changing code
@@ -165,7 +225,7 @@ Confirmed via `$arcgis.import` in the running page:
 |---|---|
 | `config.js` structure | **Keep** (Phase 1): WV branding, `en` only, miles, `scoring.mode`, placeholder web map ID. |
 | `confirmGuess()` scoring math | → `js/scoring.js`. **Done in Phase 1**, with exponential and bands modes and geodesic distance. |
-| `init()` map bootstrap | → `js/map.js` (Phase 2): web map load, WV constraints, no-label basemap. |
+| `init()` map bootstrap | → `js/map.js`. **Done in Phase 2**, with solo web map loading, WV constraints, and a no-label basemap. |
 | Pin symbol + drop animation | **Reuse** in `play.html`. It's good UX already. |
 | Share card / html2canvas | Solo only. Optional for `play.html` final standing. |
 | Survey123 leaderboard | Solo fallback only (brief §7 Fallback A). |

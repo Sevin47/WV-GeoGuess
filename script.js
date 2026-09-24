@@ -18,20 +18,19 @@
  *
  * Core modules are loaded from the ArcGIS CDN via the global `$arcgis.import()`
  * helper, and the map is rendered by the <arcgis-map> web component.
- * Scoring math lives in js/scoring.js.
+ * Scoring math lives in js/scoring.js; the pin and web map loading in js/map.js.
  * ========================================================================== */
 import { createScorer, formatMiles, pointsForMiles } from "./js/scoring.js";
+import { loadWebMap, makePinSymbol, animatePinDrop } from "./js/map.js";
 
 $arcgis
     .import([
-        "@arcgis/core/config.js",
-        "@arcgis/core/WebMap.js",
         "@arcgis/core/Graphic.js",
         "@arcgis/core/request.js",
         "@arcgis/core/geometry/operators/containsOperator.js",
         "@arcgis/core/geometry/operators/geodesicProximityOperator.js",
     ])
-    .then(([esriConfig, WebMap, Graphic, esriRequest, containsOperator, geodesicProximityOperator]) => {
+    .then(([Graphic, esriRequest, containsOperator, geodesicProximityOperator]) => {
         // -------------------------------------------------------------------
         // All settings live in config.js (exposed as window.ARCGIGUESS_CONFIG).
         // Edit THAT file — not this one — to make the game your own.
@@ -103,26 +102,7 @@ $arcgis
         let finishEarlyArmed = false;
         let finishEarlyTimer = null;
 
-        // Graphics Symbols
-        // The player's guess is shown as a pushpin (fitting the app's name). The
-        // artwork is a plain file (assets/pin.svg) — replace that file to restyle
-        // it. It's drawn on the map canvas, so we animate it by swapping the
-        // symbol's offset each frame (see animatePinDrop below).
-        const PIN_IMAGE = "./assets/pin.svg"; // replace this file to restyle the pin
-        const PIN_WIDTH = 28; // matches the 24:36 (2:3) artwork aspect ratio
-        const PIN_HEIGHT = 42;
-        const PIN_REST_YOFFSET = PIN_HEIGHT / 2; // lifts the pin's tip onto the clicked point
-
-        function makePinSymbol(yoffset) {
-            return {
-                type: "picture-marker",
-                url: PIN_IMAGE,
-                width: PIN_WIDTH,
-                height: PIN_HEIGHT,
-                yoffset: yoffset,
-            };
-        }
-
+        // Graphics Symbols (the guess pin comes from js/map.js)
         const correctSymbol = {
             type: "simple-fill",
             color: [50, 205, 50, 0.3], // Translucent green
@@ -363,24 +343,9 @@ $arcgis
          */
         async function init() {
             try {
-                // Point the SDK at an ArcGIS Enterprise portal if one is
-                // configured; otherwise it defaults to ArcGIS Online. This
-                // must be set before the web map loads so item requests and
-                // any sign-in prompts target the right portal.
-                if (CONFIG.portalUrl) {
-                    esriConfig.portalUrl = CONFIG.portalUrl;
-                }
-
-                // Create the web map and hand it to the <arcgis-map> component.
-                webmap = new WebMap({
-                    portalItem: {
-                        id: CONFIG.webMapItemId,
-                    },
-                });
-                mapEl.map = webmap;
-
-                // Load the web map so we can find the landmarks layer by title.
-                await webmap.load();
+                // Load the web map (ArcGIS Online, or the Enterprise portal
+                // in CONFIG.portalUrl) so we can find the landmarks layer.
+                webmap = await loadWebMap(mapEl, CONFIG);
                 landmarksLayer = webmap.layers.find(
                     (layer) => layer.title === CONFIG.landmarkLayerTitle
                 );
@@ -561,45 +526,11 @@ $arcgis
             mapEl.graphics.removeAll();
             const pinGraphic = new Graphic({
                 geometry: clickedPoint,
-                symbol: makePinSymbol(PIN_REST_YOFFSET),
+                symbol: makePinSymbol(),
             });
             mapEl.graphics.add(pinGraphic);
             animatePinDrop(pinGraphic);
             updateUI();
-        }
-
-        /**
-         * Animate a freshly-placed pin so it appears to drop from above and
-         * bounce into place. The marker is rendered on the map (not the DOM),
-         * so we nudge its vertical offset each frame instead of using CSS.
-         */
-        function animatePinDrop(graphic) {
-            const dropHeight = 60; // starting height above rest, in points
-            const duration = 650; // ms
-            const start = performance.now();
-
-            function frame(now) {
-                const p = Math.min((now - start) / duration, 1);
-                const extra = dropHeight * (1 - easeOutBounce(p));
-                graphic.symbol = makePinSymbol(PIN_REST_YOFFSET + extra);
-                if (p < 1) requestAnimationFrame(frame);
-            }
-            requestAnimationFrame(frame);
-        }
-
-        /** Standard "ease out bounce" easing: 0 → 1 with a settling bounce. */
-        function easeOutBounce(x) {
-            const n1 = 7.5625;
-            const d1 = 2.75;
-            if (x < 1 / d1) {
-                return n1 * x * x;
-            } else if (x < 2 / d1) {
-                return n1 * (x -= 1.5 / d1) * x + 0.75;
-            } else if (x < 2.5 / d1) {
-                return n1 * (x -= 2.25 / d1) * x + 0.9375;
-            } else {
-                return n1 * (x -= 2.625 / d1) * x + 0.984375;
-            }
         }
 
         /**

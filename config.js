@@ -176,7 +176,58 @@ window.ARCGIGUESS_CONFIG = {
     ],
 
     /* -------------------------------------------------------------------------
-     * 5. SOCIAL SHARING (link previews)
+     * 5. LIVE MODE (play.html / host.html) — see js/backend.js
+     * ---------------------------------------------------------------------- */
+    live: {
+        // "mock" — localStorage + BroadcastChannel; run host and players as
+        //          tabs in one browser. No ArcGIS Online layers needed.
+        // "agol" — the real hosted layers below.
+        // Override per page load with ?backend=mock|agol (and ?session=...).
+        backend: "mock",
+
+        // Use test-* IDs during development. The agol adapter refuses to write
+        // any other session unless allowProductionWrites is true (brief §9).
+        defaultSessionId: "test-dev",
+        allowProductionWrites: false,
+
+        // Max length of reveal_json / leaderboard_json. Writes over this fail
+        // loudly, in the mock too.
+        // TODO(Phase 3): set to the field length actually created in AGOL.
+        jsonFieldLength: 60000,
+
+        // Milliseconds between state polls, per phase (brief §3.2). ±jitter.
+        polling: { lobby: 5000, final: 10000, default: 2500, jitter: 0.25 },
+
+        mock: {
+            landmarksUrl: "data/mock/landmarks.geojson",
+            latencyMs: [80, 400], // simulated network delay per call
+        },
+
+        // TODO(Phase 3): fill in from docs/AGOL_SETUP.md.
+        agol: {
+            landmarksUrl: "", // WV_GeoGuess_Landmarks (PRIVATE, host only)
+            stateUrl: "", // WV_GeoGuess_State (owner)
+            statePublicUrl: "", // WV_GeoGuess_State_Public (read-only view)
+            guessesUrl: "", // WV_GeoGuess_Guesses (owner)
+            guessesPublicUrl: "", // public add-only view
+            guessLayerWkid: 102100, // addFeatures has no inSR; send in layer SR
+            createdField: "CreationDate", // editor-tracking field
+            cacheBust: true, // unique param on public state polls
+        },
+    },
+
+    /* -------------------------------------------------------------------------
+     * 6. MAP (play.html / host.html) — see js/map.js
+     * ---------------------------------------------------------------------- */
+    map: {
+        basemap: "hillshade", // "hillshade" | "lightgray" | "imagery" (no labels)
+        boundaryUrl: "data/wv-boundary.geojson", // Census TIGERweb 2020, generalized
+        countiesUrl: "data/wv-counties.geojson", // null to hide county lines
+        dimOutside: true,
+    },
+
+    /* -------------------------------------------------------------------------
+     * 7. SOCIAL SHARING (link previews)
      * ---------------------------------------------------------------------- */
     // Controls the preview card shown when the game's LINK is shared.
     //
@@ -196,7 +247,7 @@ window.ARCGIGUESS_CONFIG = {
     },
 
     /* -------------------------------------------------------------------------
-     * 6. LEADERBOARD (optional — solo-mode fallback only)
+     * 8. LEADERBOARD (optional — solo-mode fallback only)
      * ---------------------------------------------------------------------- */
     // Solo mode can let players submit their score through an ArcGIS Survey123
     // form and view a public leaderboard. The live event uses host.html's own

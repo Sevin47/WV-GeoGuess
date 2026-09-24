@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>WV GeoGuess — Backend harness</title>
+        <!--
+            DEV TOOL. Exercises js/backend.js + js/map.js before host.html and
+            play.html exist. Open one tab as host and one or more as players:
+              tools/harness.html?role=host
+              tools/harness.html?role=player
+            Optional: &backend=mock|agol  &session=test-xyz
+            Each player TAB gets its own player ID (sessionStorage), so several
+            tabs in one browser act as several players.
+        -->
+        <script type="module" src="https://js.arcgis.com/5.1/"></script>
+        <style>
+            * { box-sizing: border-box; }
+            html, body { margin: 0; height: 100%; font: 14px/1.4 system-ui, sans-serif; background: #f3f4f6; }
+            #app { display: grid; grid-template-columns: 360px 1fr; height: 100%; }
+            #side { overflow: auto; padding: 12px; border-right: 1px solid #ddd; background: #fff; }
+            #map { height: 100%; }
+            h1 { font-size: 16px; margin: 0 0 4px; }
+            .meta { color: #555; font-size: 12px; margin-bottom: 10px; }
+            fieldset { border: 1px solid #ddd; border-radius: 6px; margin: 0 0 10px; padding: 8px; }
+            legend { font-weight: 600; }
+            button { margin: 2px 2px 2px 0; padding: 6px 10px; cursor: pointer; }
+            input, select { padding: 5px; }
+            pre { background: #111; color: #cfc; padding: 8px; font-size: 11px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+            #prompt-img { width: 100%; border-radius: 6px; display: block; }
+            [hidden] { display: none !important; }
+            #phase { font-size: 20px; font-weight: 700; }
+            #countdown { font-variant-numeric: tabular-nums; }
+            #log { color: #b91c1c; font-size: 12px; }
+            ol { padding-left: 20px; margin: 4px 0; }
+            @media (max-width: 700px) { #app { grid-template-columns: 1fr; grid-template-rows: auto 60vh; } }
+        </style>
+    </head>
+    <body>
+        <div id="app">
+            <div id="side">
+                <h1 id="title">Harness</h1>
+                <div class="meta" id="meta"></div>
+
+                <fieldset>
+                    <legend>State</legend>
+                    <div id="phase">—</div>
+                    <div>Round <span id="round">–</span> · <span id="countdown"></span></div>
+                    <img id="prompt-img" alt="Photo of the location to find" hidden />
+                    <div id="prompt"></div>
+                </fieldset>
+
+                <fieldset id="host-controls" hidden>
+                    <legend>Host</legend>
+                    <button data-act="create">Create session</button>
+                    <button data-act="reset">Reset (mock)</button><br />
+                    <select id="landmark"></select>
+                    <button data-act="start">Start round</button><br />
+                    <button data-act="lock">Lock</button>
+                    <button data-act="reveal">Reveal</button>
+                    <button data-act="leaderboard">Leaderboard</button>
+                    <button data-act="final">Final</button>
+                    <div>Guesses this round: <strong id="guess-count">0</strong></div>
+                    <ol id="guess-list"></ol>
+                </fieldset>
+
+                <fieldset id="player-controls" hidden>
+                    <legend>Player</legend>
+                    <input id="nickname" maxlength="20" placeholder="Nickname" />
+                    <button id="submit" disabled>Submit guess</button>
+                    <div id="submit-status"></div>
+                </fieldset>
+
+                <div id="log"></div>
+                <pre id="state-json">(no state yet)</pre>
+            </div>
+            <arcgis-map id="map"></arcgis-map>
+        </div>
+
+        <script src="../config.js"></script>
+        <script type="module">
+            import {
+                createHostBackend,
+                createPlayerBackend,
+                resolveLiveConfig,
+                watchState,
+                siteUrl,
+            } from "../js/backend.js";
+            import { setupWVMap, makePinSymbol, animatePinDrop } from "../js/map.js";
+
+            const CONFIG = window.ARCGIGUESS_CONFIG;
+            const params = new URLSearchParams(location.search);
+            const role = params.get("role") === "host" ? "host" : "player";
+            const live = resolveLiveConfig(CONFIG.live, location.search);
+            const sid = live.sessionId;
+            const backend = role === "host" ? createHostBackend(live) : createPlayerBackend(live);
+
+            const $ = (id) => document.getElementById(id);
+            $("title").textContent = `Harness — ${role}`;
+            $("meta").textContent = `backend=${backend.kind} · session=${sid}`;
+            const log = (msg) => ($("log").textContent = msg ? `⚠ ${msg}` : "");
+
+            const [Graphic] = await $arcgis.import(["@arcgis/core/Graphic.js"]);
+            const mapEl = $("map");
+            await setupWVMap(mapEl, CONFIG.map);
+
+            let state = null;
+            let pendingPoint = null;
+            let submittedRound = null;
+
+            // --- shared state rendering ---------------------------------------
+            function render() {
+                $("state-json").textContent = JSON.stringify(state, null, 1);
+                $("phase").textContent = state ? state.phase : "no session";
+                $("round").textContent = state ? `${state.roundNum} / ${state.roundTotal ?? "?"}` : "–";
+                const img = $("prompt-img");
+                if (state?.imagePath && state.phase !== "lobby") {
+                    img.src = siteUrl(state.imagePath);
+                    img.hidden = false;
+                } else img.hidden = true;
+                $("prompt").textContent = state?.promptText || "";
+                if (role === "player") {
+                    const canGuess = state?.phase === "guessing" && submittedRound !== state.roundNum;
+                    $("submit").disabled = !(canGuess && pendingPoint);
+                }
+            }
+
+            setInterval(() => {
+                const ends = state?.phase === "guessing" && state.roundEndsAt;
+                $("countdown").textContent = ends
+                    ? `${Math.max(0, Math.ceil((ends - Date.now()) / 1000))}s left`
+                    : "";
+            }, 250);
+
+            watchState(
+                backend,
+                sid,
+                (s) => {
+                    if (role === "player" && s?.roundNum !== state?.roundNum) {
+                        pendingPoint = null; // new round: clear the old pin
+                        mapEl.graphics.removeAll();
+                        $("submit-status").textContent = "";
+                    }
+                    state = s;
+                    log("");
+                    render();
+                    if (role === "host") refreshGuesses();
+                },
+                { ...CONFIG.live.polling, intervals: CONFIG.live.polling, onError: (e) => log(e.message) }
+            );
+
+            // --- host ------------------------------------------------------------
+            if (role === "host") {
+                $("host-controls").hidden = false;
+                const landmarks = await backend.getLandmarks();
+                for (const [i, lm] of landmarks.entries()) {
+                    $("landmark").add(new Option(`${lm.roundOrder}. ${lm.name} (${lm.setName})`, i));
+                }
+
+                const act = {
+                    create: () => backend.createSession(sid, { roundTotal: landmarks.length }),
+                    reset: () => backend.resetSession?.(sid),
+                    start: () => {
+                        const lm = landmarks[$("landmark").value];
+                        return backend.updateState(sid, {
+                            phase: "guessing",
+                            roundNum: lm.roundOrder,
+                            setName: lm.setName,
+                            imagePath: lm.imagePath,
+                            promptText: lm.promptText,
+                            roundEndsAt: Date.now() + 45000,
+                            reveal: null,
+                        });
+                    },
+                    lock: () => backend.updateState(sid, { phase: "locked" }),
+                    reveal: () => {
+                        const lm = landmarks.find((l) => l.roundOrder === state.roundNum);
+                        drawAnswer(lm);
+                        return backend.updateState(sid, { phase: "reveal", reveal: { name: lm?.name, funFact: lm?.funFact } });
+                    },
+                    leaderboard: () => backend.updateState(sid, { phase: "leaderboard" }),
+                    final: () => backend.updateState(sid, { phase: "final" }),
+                };
+                $("host-controls").addEventListener("click", async (e) => {
+                    const name = e.target.dataset?.act;
+                    if (!name) return;
+                    try {
+                        await act[name]();
+                        log("");
+                    } catch (err) {
+                        log(`${err.code || ""} ${err.message}`);
+                    }
+                });
+
+                // Live "N guesses in", driven by mock hints and a slow poll.
+                backend.onHint(sid, (what) => what === "guess" && refreshGuesses());
+                setInterval(refreshGuesses, 3000);
+            }
+
+            async function refreshGuesses() {
+                if (role !== "host" || !state?.roundNum) return;
+                const guesses = await backend.listGuesses(sid, state.roundNum);
+                $("guess-count").textContent = guesses.length;
+                $("guess-list").innerHTML = "";
+                mapEl.graphics.removeMany(mapEl.graphics.filter((g) => g.attributes?.kind === "guess"));
+                for (const g of guesses) {
+                    const li = document.createElement("li");
+                    li.textContent = `${g.nickname} — ${g.lat.toFixed(3)}, ${g.lon.toFixed(3)} @ ${new Date(g.createdAt).toLocaleTimeString()}`;
+                    $("guess-list").appendChild(li);
+                    mapEl.graphics.add(
+                        new Graphic({
+                            geometry: { type: "point", longitude: g.lon, latitude: g.lat },
+                            symbol: makePinSymbol(undefined, { scale: 0.7 }),
+                            attributes: { kind: "guess" },
+                        })
+                    );
+                }
+            }
+
+            function drawAnswer(lm) {
+                if (!lm) return;
+                mapEl.graphics.removeMany(mapEl.graphics.filter((g) => g.attributes?.kind === "answer"));
+                mapEl.graphics.add(
+                    new Graphic({
+                        geometry: { type: "polygon", ...lm.geometry },
+                        symbol: { type: "simple-fill", color: [22, 163, 74, 0.5], outline: { color: [20, 83, 45], width: 2 } },
+                        attributes: { kind: "answer" },
+                    })
+                );
+            }
+
+            // --- player ------------------------------------------------------------
+            if (role === "player") {
+                $("player-controls").hidden = false;
+                let playerId = sessionStorage.getItem("wvgg.harness.playerId");
+                if (!playerId) {
+                    playerId = crypto.randomUUID();
+                    sessionStorage.setItem("wvgg.harness.playerId", playerId);
+                }
+                $("nickname").value = sessionStorage.getItem("wvgg.harness.nick") || `Tester-${playerId.slice(0, 4)}`;
+
+                mapEl.addEventListener("arcgisViewClick", (e) => {
+                    if (state?.phase !== "guessing" || submittedRound === state.roundNum) return;
+                    pendingPoint = e.detail.mapPoint;
+                    mapEl.graphics.removeAll();
+                    const pin = new Graphic({ geometry: pendingPoint, symbol: makePinSymbol() });
+                    mapEl.graphics.add(pin);
+                    animatePinDrop(pin);
+                    render();
+                });
+
+                $("submit").addEventListener("click", async () => {
+                    const nick = $("nickname").value.trim();
+                    sessionStorage.setItem("wvgg.harness.nick", nick);
+                    $("submit").disabled = true;
+                    try {
+                        await backend.submitGuess({
+                            sessionId: sid,
+                            roundNum: state.roundNum,
+                            playerId,
+                            nickname: nick,
+                            lon: pendingPoint.longitude,
+                            lat: pendingPoint.latitude,
+                        });
+                        submittedRound = state.roundNum;
+                        $("submit-status").textContent = `Locked in ✓ (round ${state.roundNum})`;
+                    } catch (err) {
+                        log(err.message);
+                    }
+                    render();
+                });
+            }
+        </script>
+    </body>
+</html>

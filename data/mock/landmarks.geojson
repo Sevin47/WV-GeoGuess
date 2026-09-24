@@ -1,0 +1,246 @@
+{
+ "type": "FeatureCollection",
+ "_comment": "MOCK BACKEND ONLY. Approximate test footprints around well-known WV places; not surveyed. Public file: never put real round answers here.",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "landmark_id": "r01",
+    "name": "WV State Capitol",
+    "prompt_text": "Where is this gold dome?",
+    "set_name": "Break 1",
+    "round_order": 1,
+    "image_path": "assets/rounds/mock/r01.svg",
+    "fun_fact": "The Capitol dome is taller than the U.S. Capitol's.",
+    "credit": "Test placeholder"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -81.6136,
+       38.3353
+      ],
+      [
+       -81.6106,
+       38.3353
+      ],
+      [
+       -81.6106,
+       38.3377
+      ],
+      [
+       -81.6136,
+       38.3377
+      ],
+      [
+       -81.6136,
+       38.3353
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "landmark_id": "r02",
+    "name": "New River Gorge Bridge",
+    "prompt_text": "Where is this bridge?",
+    "set_name": "Break 1",
+    "round_order": 2,
+    "image_path": "assets/rounds/mock/r02.svg",
+    "fun_fact": "Bridge Day draws BASE jumpers every October.",
+    "credit": "Test placeholder"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -81.0842,
+       38.0642
+      ],
+      [
+       -81.0818,
+       38.0642
+      ],
+      [
+       -81.0818,
+       38.0732
+      ],
+      [
+       -81.0842,
+       38.0732
+      ],
+      [
+       -81.0842,
+       38.0642
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "landmark_id": "r03",
+    "name": "Harpers Ferry",
+    "prompt_text": "Where is this historic town?",
+    "set_name": "Break 1",
+    "round_order": 3,
+    "image_path": "assets/rounds/mock/r03.svg",
+    "fun_fact": "The Shenandoah meets the Potomac here.",
+    "credit": "Test placeholder"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -77.733,
+       39.3205
+      ],
+      [
+       -77.727,
+       39.3205
+      ],
+      [
+       -77.727,
+       39.3245
+      ],
+      [
+       -77.733,
+       39.3245
+      ],
+      [
+       -77.733,
+       39.3205
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "landmark_id": "r04",
+    "name": "Seneca Rocks",
+    "prompt_text": "Where are these rocks?",
+    "set_name": "Break 2",
+    "round_order": 4,
+    "image_path": "assets/rounds/mock/r04.svg",
+    "fun_fact": "A popular climbing destination.",
+    "credit": "Test placeholder"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -79.3697,
+       38.8305
+      ],
+      [
+       -79.3637,
+       38.8305
+      ],
+      [
+       -79.3637,
+       38.8385
+      ],
+      [
+       -79.3697,
+       38.8385
+      ],
+      [
+       -79.3697,
+       38.8305
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "landmark_id": "r05",
+    "name": "Blackwater Falls",
+    "prompt_text": "Where is this waterfall?",
+    "set_name": "Break 2",
+    "round_order": 5,
+    "image_path": "assets/rounds/mock/r05.svg",
+    "fun_fact": "The water is tinted by hemlock and red spruce tannins.",
+    "credit": "Test placeholder"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -79.483,
+       39.11
+      ],
+      [
+       -79.479,
+       39.11
+      ],
+      [
+       -79.479,
+       39.113
+      ],
+      [
+       -79.483,
+       39.113
+      ],
+      [
+       -79.483,
+       39.11
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "landmark_id": "r06",
+    "name": "Wheeling Suspension Bridge",
+    "prompt_text": "Where is this bridge?",
+    "set_name": "Break 2",
+    "round_order": 6,
+    "image_path": "assets/rounds/mock/r06.svg",
+    "fun_fact": "Once the longest single-span suspension bridge in the world.",
+    "credit": "Test placeholder"
+   },
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       -80.729,
+       40.0696
+      ],
+      [
+       -80.725,
+       40.0696
+      ],
+      [
+       -80.725,
+       40.0708
+      ],
+      [
+       -80.729,
+       40.0708
+      ],
+      [
+       -80.729,
+       40.0696
+      ]
+     ]
+    ]
+   }
+  }
+ ]
+}
