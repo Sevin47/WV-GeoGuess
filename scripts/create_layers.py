@@ -7,14 +7,14 @@ the faster path. Either way, verify afterwards with tools/check-agol.html.
     DRY RUN (default) — prints what would be created, touches nothing:
         python scripts/create_layers.py
 
-    APPLY — creates what's missing, then reads everything back and checks it:
-        python scripts/create_layers.py --apply --portal https://YOURORG.maps.arcgis.com --username YOU
-            (prompts for the password; nothing is stored)
-        python scripts/create_layers.py --apply --portal https://YOURORG.maps.arcgis.com --client-id APPID
-            (single sign-on: opens a browser sign-in; APPID is an OAuth client ID)
+    APPLY, easiest — in an ArcGIS Online Notebook (nothing to install,
+    already signed in): paste this whole file into a cell and run it, then
+    in a new cell run:   main(["--apply", "--home"])
 
-    In an ArcGIS Online Notebook (no local install needed), paste this file
-    into a cell, then run:   main(["--apply", "--home"])
+    APPLY, locally (needs `pip install arcgis`, roughly 0.5 GB):
+        python scripts/create_layers.py --apply --username YOUR_AGOL_USERNAME
+            (prompts for the password; nothing is stored)
+        Single sign-on orgs instead:  --portal https://YOURORG.maps.arcgis.com --client-id APPID
 
 Re-running is safe: items that already exist (same title, same owner) are
 skipped, not replaced. Nothing is ever deleted except the one test row the
@@ -193,17 +193,35 @@ def dry_run():
 # Apply
 # ---------------------------------------------------------------------------
 
+NO_ARCGIS = """
+The ArcGIS API for Python isn't installed, and --apply needs it.
+
+Easiest: run this inside an ArcGIS Online Notebook, where it's preinstalled
+and you're already signed in (docs/AGOL_SETUP.md §1):
+    1. Paste this whole file into a notebook cell and run it.
+    2. In a new cell, run:   main(["--apply", "--home"])
+
+Or install it locally (a large download, roughly 0.5 GB with dependencies):
+    pip install arcgis
+"""
+
+
+def check_args(args):
+    """Fail fast on missing sign-in options, before any slow imports."""
+    if args.home or args.client_id or args.username:
+        return
+    sys.exit("--apply needs a way to sign in:\n"
+             "    --username YOUR_AGOL_USERNAME   (prompts for the password)\n"
+             "    --home                          (inside an ArcGIS Online Notebook)")
+
+
 def connect(args):
     from arcgis.gis import GIS
 
     if args.home:
         return GIS("home")
-    if not args.portal:
-        sys.exit("--portal is required (or --home inside an ArcGIS Notebook)")
     if args.client_id:
         return GIS(args.portal, client_id=args.client_id)
-    if not args.username:
-        sys.exit("--username or --client-id is required")
     return GIS(args.portal, args.username, getpass.getpass(f"Password for {args.username}: "))
 
 
@@ -223,7 +241,11 @@ def share_everyone(item):
 
 
 def apply(args):
-    from arcgis.features import FeatureLayerCollection
+    check_args(args)
+    try:
+        from arcgis.features import FeatureLayerCollection
+    except ImportError:
+        sys.exit(NO_ARCGIS)
 
     gis = connect(args)
     print(f"Signed in to {gis.properties.portalHostname} as {gis.users.me.username}\n")
@@ -372,7 +394,8 @@ def main(argv=None):
         sys.stdout.reconfigure(errors="replace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--apply", action="store_true", help="actually create (default is a dry run)")
-    ap.add_argument("--portal", help="e.g. https://YOURORG.maps.arcgis.com")
+    ap.add_argument("--portal", default="https://www.arcgis.com",
+                    help="ArcGIS Online URL (default works for username logins in any org)")
     ap.add_argument("--username", help="ArcGIS account (built-in login); password is prompted")
     ap.add_argument("--client-id", help="OAuth client ID for single sign-on (browser sign-in)")
     ap.add_argument("--home", action="store_true", help='use GIS("home") inside an ArcGIS Notebook')
@@ -383,5 +406,8 @@ def main(argv=None):
         dry_run()
 
 
-if __name__ == "__main__":
+# In a notebook cell __name__ is also "__main__", but sys.argv holds the
+# kernel's own arguments, which argparse would reject — so there, call
+# main([...]) yourself (see the docstring).
+if __name__ == "__main__" and "ipykernel" not in sys.modules:
     main()

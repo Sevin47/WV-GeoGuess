@@ -14,10 +14,10 @@ renames things occasionally, so if a label doesn't match exactly, look for the c
 - **Account privileges.** You need to create content, create hosted feature layers, and **share
   publicly**. Some orgs block public sharing, or public *editable* layers, for regular members. If
   sharing to Everyone is greyed out, ask your AGOL admin.
-- **Sign-in type.** Find out how you sign in to AGOL:
-  - **ArcGIS login** (username and password typed on the ArcGIS page): nothing extra is needed.
-  - **Single sign-on** (redirects to a WVDOT or Microsoft login page): the host page will need an OAuth
-    client ID. See [§7](#7-host-sign-in-only-if-your-org-uses-single-sign-on).
+- **Who signs in.** Only the **host** signs in to AGOL. Players never do. They scan the QR code, type a
+  nickname, and play through the public views.
+- **Sign-in type.** WVDOT uses **ArcGIS logins** (username and password typed on the ArcGIS page), so
+  nothing extra is needed and [§7](#7-host-sign-in-only-if-your-org-uses-single-sign-on) can be skipped.
 - **What will be public, and what won't:**
 
 | Item | Sharing | Editing | Why |
@@ -36,33 +36,46 @@ Turn on **Delete protection** (item page → Settings) for all three source laye
 ## 1. Option A — the script (recommended)
 
 [`scripts/create_layers.py`](../scripts/create_layers.py) creates everything in the table above, skips
-items that already exist, and then reads everything back and checks it against the spec.
+items that already exist, and then reads everything back and checks it against the spec. It needs
+Esri's free **ArcGIS API for Python** library (`arcgis`). That library doesn't require ArcGIS Pro or a
+license, only your AGOL login. There are two ways to get it.
 
-**In an ArcGIS Online Notebook** (no local install):
+**In an ArcGIS Online Notebook** (no local install; your account needs notebook privileges, which it
+has if **Notebook** appears in the AGOL app launcher):
 
 1. Go to ArcGIS Online → **Notebook** → **New notebook** → **Standard**.
 2. Paste the whole contents of `scripts/create_layers.py` into a cell and run it.
 3. In a new cell, run `main(["--apply", "--home"])`.
 
-**Or locally** (`pip install arcgis` first):
+**Or locally, on any PC with Python.** This is a large download (about 0.5 GB). A virtual environment
+keeps it out of your main Python install.
 
-First do a dry run, which changes nothing:
+1. Create the environment:
 
-```bash
-python scripts/create_layers.py
-```
+   ```bash
+   python -m venv .venv
+   ```
 
-Then apply it. With an ArcGIS login (it prompts for your password):
+2. Install the library:
 
-```bash
-python scripts/create_layers.py --apply --portal https://YOURORG.maps.arcgis.com --username YOUR_USERNAME
-```
+   ```bash
+   .venv/Scripts/python -m pip install arcgis
+   ```
 
-With single sign-on (it opens a browser):
+3. Do a dry run, which changes nothing:
 
-```bash
-python scripts/create_layers.py --apply --portal https://YOURORG.maps.arcgis.com --client-id YOUR_CLIENT_ID
-```
+   ```bash
+   .venv/Scripts/python scripts/create_layers.py
+   ```
+
+4. Apply it. It prompts for your AGOL password and stores nothing:
+
+   ```bash
+   .venv/Scripts/python scripts/create_layers.py --apply --username YOUR_AGOL_USERNAME
+   ```
+
+`.venv/` is git-ignored. Single sign-on orgs would use `--portal https://YOURORG.maps.arcgis.com
+--client-id YOUR_CLIENT_ID` instead of `--username`.
 
 At the end the script prints a block of URLs to paste into `config.js`, plus a VERIFY list. A `FAIL`
 line means the setting didn't apply; fix that item by hand using §3–§5.
@@ -216,6 +229,8 @@ For each round (brief §5):
 ---
 
 ## 7. Host sign-in (only if your org uses single sign-on)
+
+**Not needed for WVDOT**, which uses ArcGIS logins. This section is kept in case that changes.
 
 With no extra setup, the SDK's sign-in prompt asks for an ArcGIS username and password. **That prompt
 doesn't support single sign-on (SAML/OIDC).** If your AGOL login redirects to a WVDOT or Microsoft page:
