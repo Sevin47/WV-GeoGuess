@@ -201,9 +201,9 @@ window.ARCGIGUESS_CONFIG = {
         allowProductionWrites: false,
 
         // Max length of reveal_json / leaderboard_json. Writes over this fail
-        // loudly, in the mock too.
-        // TODO(Phase 3): set to the field length actually created in AGOL.
-        jsonFieldLength: 60000,
+        // loudly, in the mock too. 64000 round-tripped intact on the real
+        // State table (create_layers.py, 2026-09-24).
+        jsonFieldLength: 64000,
 
         // Milliseconds between state polls, per phase (brief §3.2). ±jitter.
         polling: { lobby: 5000, final: 10000, default: 2500, jitter: 0.25 },
@@ -213,13 +213,19 @@ window.ARCGIGUESS_CONFIG = {
             latencyMs: [80, 400], // simulated network delay per call
         },
 
-        // TODO(Phase 3): fill in from docs/AGOL_SETUP.md.
+        // Created 2026-09-24 by scripts/create_layers.py. Service URLs aren't
+        // secrets: the owner layers refuse anonymous access (token required).
         agol: {
-            landmarksUrl: "", // WV_GeoGuess_Landmarks (PRIVATE, host only)
-            stateUrl: "", // WV_GeoGuess_State (owner)
-            statePublicUrl: "", // WV_GeoGuess_State_Public (read-only view)
-            guessesUrl: "", // WV_GeoGuess_Guesses (owner)
-            guessesPublicUrl: "", // public add-only view
+            // WV_GeoGuess_Landmarks (PRIVATE, host only)
+            landmarksUrl: "https://services2.arcgis.com/xLpB90lOmCXYDAWo/arcgis/rest/services/WV_GeoGuess_Landmarks/FeatureServer/0",
+            // WV_GeoGuess_State (owner)
+            stateUrl: "https://services2.arcgis.com/xLpB90lOmCXYDAWo/arcgis/rest/services/WV_GeoGuess_State/FeatureServer/0",
+            // WV_GeoGuess_State_Public (read-only view)
+            statePublicUrl: "https://services2.arcgis.com/xLpB90lOmCXYDAWo/arcgis/rest/services/WV_GeoGuess_State_Public/FeatureServer/0",
+            // WV_GeoGuess_Guesses (owner)
+            guessesUrl: "https://services2.arcgis.com/xLpB90lOmCXYDAWo/arcgis/rest/services/WV_GeoGuess_Guesses/FeatureServer/0",
+            // WV_GeoGuess_Guesses_Public (add-only, blind view)
+            guessesPublicUrl: "https://services2.arcgis.com/xLpB90lOmCXYDAWo/arcgis/rest/services/WV_GeoGuess_Guesses_Public/FeatureServer/0",
             guessLayerWkid: 102100, // addFeatures has no inSR; send in layer SR
             createdField: "CreationDate", // editor-tracking field
             cacheBust: true, // unique param on public state polls

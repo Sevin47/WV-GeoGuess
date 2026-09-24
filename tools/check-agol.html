@@ -89,6 +89,16 @@
                 }
             }
 
+            async function publicMaxAge(url) {
+                try {
+                    const res = await fetch(url, { cache: "no-store" });
+                    const m = /max-age=(\d+)/.exec(res.headers.get("cache-control") || "");
+                    return m ? Number(m[1]) : null;
+                } catch {
+                    return null;
+                }
+            }
+
             const caps = (json) => new Set((json?.capabilities || "").split(",").map((s) => s.trim()).filter(Boolean));
             const fmtCaps = (set) => [...set].sort().join(",") || "(none)";
 
@@ -129,10 +139,20 @@
                             if (!f) report("FAIL", `Field ${name} exists`, "missing");
                             else report(f.length >= CONFIG.live.jsonFieldLength ? "PASS" : "FAIL", `Field ${name} length`, `layer says ${f.length}; config.live.jsonFieldLength is ${CONFIG.live.jsonFieldLength}`);
                         }
-                        // cacheMaxAge is a service-level property.
-                        const svc = await anon(agol.statePublicUrl.replace(/\/\d+\/?$/, ""));
-                        const age = svc.json?.cacheMaxAge;
-                        report(age === 0 ? "PASS" : age == null ? "WARN" : "FAIL", "State public view: cache control", age == null ? "cacheMaxAge not reported; check Settings > Cache control" : `cacheMaxAge = ${age}s (want 0)`);
+                        // AGOL doesn't expose cacheMaxAge in the service JSON; the CDN's
+                        // Cache-Control header (CORS-safelisted, so readable) is the truth.
+                        const age = await publicMaxAge(`${agol.statePublicUrl}/query?where=1%3D1&returnCountOnly=true&f=json`);
+                        const busting = CONFIG.live.agol.cacheBust !== false;
+                        report(
+                            age === 0 ? "PASS" : busting ? "WARN" : "FAIL",
+                            "State public view: CDN cache",
+                            age == null
+                                ? "no Cache-Control header"
+                                : `max-age=${age}s (want 0). ` +
+                                      (age === 0 ? "" : busting
+                                          ? "The game's cache-buster (live.agol.cacheBust) bypasses it, but set Settings > Cache control to the lowest value."
+                                          : "cacheBust is OFF, so phones may see state up to this old!")
+                        );
                     }
                 }
 

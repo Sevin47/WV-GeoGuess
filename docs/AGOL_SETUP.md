@@ -152,11 +152,13 @@ other way (for example, publishing from Pro in another SR), change `live.agol.gu
    and keep all fields.
 2. On the **view's** Settings page:
    - Leave editing **off**. The view has its own editing settings, separate from the source.
-   - **Cache control:** set it to the **lowest** value offered. The service property `cacheMaxAge`
-     accepts 0–3600 seconds and defaults to 30. If the UI's lowest option is above 0, the script sets
-     0 directly, or you can leave the UI value, because the game adds a cache-busting parameter to
-     every poll (`live.agol.cacheBust: true`). Cache control only applies to public, non-editable
-     layers, which is exactly this view.
+   - **Cache control:** set it to the **lowest** value offered. **Do this even if you used the
+     script.** Setting `cacheMaxAge: 0` from Python did not take effect in our real org (2026-09-24),
+     and the view kept sending `Cache-Control: max-age=30`. Cache control only applies to public,
+     non-editable layers, which is exactly this view.
+   - Until it's lowered, phones still get fresh state. The game adds a unique parameter to every poll
+     (`live.agol.cacheBust: true`), and each of those requests is a CDN miss (`X-Cache: TCP_MISS`,
+     measured).
 3. **Share** the view with **Everyone**. Leave the source table private.
 
 ---
@@ -259,7 +261,7 @@ doesn't support single sign-on (SAML/OIDC).** If your AGOL login redirects to a 
 | Check | Expect |
 |---|---|
 | Landmarks, State, and Guesses source layers | **Refuse** anonymous queries (Token Required) |
-| State public view | Readable, `Query` capability only, `cacheMaxAge` 0, JSON fields ≥ config |
+| State public view | Readable, `Query` capability only, CDN `max-age=0`, JSON fields ≥ config |
 | Guesses public view | `Create` only (no Query/Update/Delete), Web Mercator, editor tracking, anonymous query sees nothing |
 | **Send a test guess** button | Anonymous add succeeds. It writes one point to session `test-check`. |
 

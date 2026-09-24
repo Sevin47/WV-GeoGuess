@@ -118,7 +118,10 @@ VIEWS = [
         "source": "WV_GeoGuess_State",
         "snippet": "Read-only public view of WV GeoGuess state. Phones poll this.",
         "capabilities": "Query",
-        "definition": {"cacheMaxAge": 0},  # lowest CDN cache (0–3600 s allowed)
+        # Lowest CDN cache. Setting it here did NOT take effect on a real org
+        # (2026-09-24): the view still sent max-age=30. Set it in the item's
+        # Settings > Cache control; verify() reads the actual header.
+        "definition": {"cacheMaxAge": 0},
         "share_everyone": True,
     },
     {
@@ -336,13 +339,27 @@ def verify(items):
         check(caps == want, f"{v['title']} capabilities {sorted(caps)} == {sorted(want)}")
         want_share = "everyone" if v["share_everyone"] else "private"
         check(_sharing(items[v["title"]]) == want_share, f"{v['title']} sharing is {want_share}")
-        if "cacheMaxAge" in v["definition"]:
-            check(vflc.properties.get("cacheMaxAge") == 0,
-                  f"{v['title']} cacheMaxAge={vflc.properties.get('cacheMaxAge')} (want 0)")
+        if "cacheMaxAge" in v["definition"] and v["share_everyone"]:
+            # cacheMaxAge isn't exposed in the service JSON; the CDN's
+            # Cache-Control header on an anonymous query is the truth.
+            age = public_max_age(vflc.layers[0].url if vflc.layers else vflc.tables[0].url)
+            check(age == 0, f"{v['title']} CDN max-age={age} (want 0; the game's cache-buster "
+                            "bypasses it meanwhile — set Settings > Cache control)")
 
     check(json_roundtrip(items["WV_GeoGuess_State"]), f"State JSON fields round-trip {JSON_FIELD_LENGTH} chars")
     print("  (Public-editing approval and anonymous access are checked by tools/check-agol.html.)")
     return ok
+
+
+def public_max_age(layer_url):
+    """max-age from an anonymous query's Cache-Control header (None if absent)."""
+    import re
+    import urllib.request
+
+    url = f"{layer_url}/query?where=1%3D1&returnCountOnly=true&f=json"
+    with urllib.request.urlopen(url, timeout=30) as res:
+        m = re.search(r"max-age=(\d+)", res.headers.get("Cache-Control", ""))
+    return int(m.group(1)) if m else None
 
 
 def _sharing(item):
