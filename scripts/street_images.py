@@ -5,6 +5,7 @@ Street-level round photos for WV GeoGuess: sample -> review -> finalize.
     1. SAMPLE candidates (downloads into work/, which is git-ignored):
          python scripts/street_images.py sample wvdot --count 150
          python scripts/street_images.py sample mapillary --count 150
+         python scripts/street_images.py sample mapillary --urban --count 80   # towns only
     2. REVIEW them in the browser (python scripts/serve.py, then open
        http://localhost:8000/tools/review.html) — keep the good ones, reject
        blurry/dark shots, frames with readable people or plates, and wrong
@@ -66,7 +67,17 @@ ANSWERS_GEOJSON = WORK / "landmarks.geojson"
 ROUNDS_DIR = ROOT / "assets" / "rounds"
 
 HIT_RADIUS_MILES = 0.5  # a pin this close to where the photo was taken scores 1000
-MIN_SPACING_MILES = 2.0  # no two candidates closer than this
+MIN_SPACING_MILES = 2.0  # no two candidates closer than this (--urban uses less)
+URBAN_MIN_POP = 2500  # Census "urban" threshold; WV has 63 places this size
+MIN_SPACING = MIN_SPACING_MILES  # set per run by `sample`
+URBAN = False  # set per run by `sample --urban`
+
+
+def town_radius(pop):
+    """Radius of a town's core, in miles (~0.55 mi for 2,500 people ... 2 mi for Charleston).
+    Kept tight on purpose: town centers have the signs and buildings that make a
+    photo guessable; the edges look like any rural road."""
+    return max(0.4, min(2.0, math.sqrt(pop) / 90))
 CELL_DEG = 0.25  # spread: at most --per-cell candidates per 0.25° grid cell
 WVDOT_CROP_BOTTOM = 0.12  # the text strip (and most of the hood) lives in the bottom ~12%
 DARK_LIMIT = 55  # mean brightness (0-255) below this = too dark to play
@@ -121,6 +132,7 @@ class WV:
         c = json.loads((ROOT / "data/wv-counties.geojson").read_text())
         self.counties = [(f["properties"]["NAME"], _rings(f["geometry"])) for f in c["features"]]
         self.places = json.loads((ROOT / "data/wv-places.json").read_text())["places"]
+        self.towns = [p for p in self.places if (p.get("pop") or 0) >= URBAN_MIN_POP]
 
     def contains(self, lon, lat):
         return _in_rings(lon, lat, self.rings)
@@ -131,6 +143,19 @@ class WV:
     def nearest_place(self, lon, lat):
         best = min(self.places, key=lambda p: miles_between(lat, lon, p["lat"], p["lon"]))
         return best["name"], miles_between(lat, lon, best["lat"], best["lon"])
+
+    def town_context(self, lon, lat):
+        """Nearest town of URBAN_MIN_POP+ and whether (lon, lat) is inside its built-up radius."""
+        t = min(self.towns, key=lambda p: miles_between(lat, lon, p["lat"], p["lon"]))
+        miles = miles_between(lat, lon, t["lat"], t["lon"])
+        return {"name": t["name"], "pop": t["pop"], "miles": round(miles, 1), "urban": miles <= town_radius(t["pop"])}
+
+    def random_town_point(self, rng):
+        """A random spot inside a random town, bigger towns more often (weight ~ sqrt(pop))."""
+        t = rng.choices(self.towns, weights=[math.sqrt(p["pop"]) for p in self.towns])[0]
+        r = town_radius(t["pop"]) * math.sqrt(rng.random()) / 69.0  # miles -> degrees latitude
+        a = rng.uniform(0, 2 * math.pi)
+        return t["lon"] + r * math.cos(a) / math.cos(math.radians(t["lat"])), t["lat"] + r * math.sin(a)
 
     def random_point(self, rng):
         x0, y0, x1, y1 = self.bbox
@@ -169,7 +194,7 @@ def spacing_problem(cands, lon, lat, per_cell):
     cell = (math.floor(lon / CELL_DEG), math.floor(lat / CELL_DEG))
     in_cell = 0
     for c in cands:
-        if miles_between(lat, lon, c["lat"], c["lon"]) < MIN_SPACING_MILES:
+        if miles_between(lat, lon, c["lat"], c["lon"]) < MIN_SPACING:
             return "too close to another candidate"
         if (math.floor(c["lon"] / CELL_DEG), math.floor(c["lat"] / CELL_DEG)) == cell:
             in_cell += 1
@@ -319,6 +344,9 @@ def wvdot_candidate(src, rng, wv, cands, per_cell):
     lat, lon, votes, reads, captured = ocr
     if not wv.contains(lon, lat):
         return None, "outside WV"
+    town = wv.town_context(lon, lat)
+    if URBAN and not town["urban"]:
+        return None, "not in a town"
     with _lock:
         problem = spacing_problem(cands, lon, lat, per_cell)
     if problem:
@@ -343,6 +371,7 @@ def wvdot_candidate(src, rng, wv, cands, per_cell):
         "captured": captured,
         "county": county,
         "near": near,
+        "town": town,
         "name": label,
         "credit": "WVDOT dashcam",
         "funFact": "A WVDOT dashcam frame" + (f", {when}." if when else "."),
@@ -358,11 +387,12 @@ def wvdot_candidate(src, rng, wv, cands, per_cell):
 # ---------------------------------------------------------------------------
 
 def mapillary_candidate(token, rng, wv, cands, per_cell):
-    lon, lat = wv.random_point(rng)
+    lon, lat = wv.random_town_point(rng) if URBAN else wv.random_point(rng)
     with _lock:
         if spacing_problem(cands, lon, lat, per_cell):
             return None, "area already covered"
-    for half in (0.01, 0.03):  # ~1 km, then ~3 km around the random point
+    # ~0.5 km then ~1.3 km in towns; ~1 km then ~3 km anywhere else
+    for half in ((0.005, 0.012) if URBAN else (0.01, 0.03)):
         q = urllib.parse.urlencode({
             "fields": "id,thumb_2048_url,computed_geometry,geometry,captured_at,is_pano,creator",
             "bbox": f"{lon - half},{lat - half},{lon + half},{lat + half}",
@@ -380,6 +410,9 @@ def mapillary_candidate(token, rng, wv, cands, per_cell):
     ilon, ilat = geom["coordinates"]
     if not wv.contains(ilon, ilat):
         return None, "outside WV"
+    town = wv.town_context(ilon, ilat)
+    if URBAN and not town["urban"]:
+        return None, "not in a town"
     with _lock:
         problem = spacing_problem(cands, ilon, ilat, per_cell)
     if problem:
@@ -404,6 +437,7 @@ def mapillary_candidate(token, rng, wv, cands, per_cell):
         "captured": captured,
         "county": county,
         "near": near,
+        "town": town,
         "name": label,
         "credit": f"© {user}, Mapillary (CC BY-SA 4.0)",
         "funFact": "Crowd-sourced street imagery from Mapillary"
@@ -420,8 +454,12 @@ def mapillary_candidate(token, rng, wv, cands, per_cell):
 # ---------------------------------------------------------------------------
 
 def cmd_sample(args):
-    global TESSERACT
+    global TESSERACT, URBAN, MIN_SPACING
     load_env()
+    URBAN = args.urban
+    MIN_SPACING = args.min_spacing if args.min_spacing is not None else (0.75 if URBAN else MIN_SPACING_MILES)
+    if args.per_cell is None:
+        args.per_cell = 8 if URBAN else 3
     TESSERACT = os.environ.get("TESSERACT_EXE") or TESSERACT  # .env may set it
     CANDIDATES_DIR.mkdir(parents=True, exist_ok=True)
     wv = WV()
@@ -505,11 +543,24 @@ def cmd_verify(_args):
     print(f"Confirmed {ok}; auto-rejected {len(todo) - ok} (you can still override in review).")
 
 
+def cmd_annotate(_args):
+    """Add town context (nearest town, population, in-town or not) to existing candidates."""
+    wv = WV()
+    cands = load_candidates()
+    for c in cands:
+        c["town"] = wv.town_context(c["lon"], c["lat"])
+    save_candidates(cands)
+    urban = sum(c["town"]["urban"] for c in cands)
+    print(f"Annotated {len(cands)} candidates: {urban} in a town of {URBAN_MIN_POP:,}+, {len(cands) - urban} rural.")
+
+
 def cmd_status(_args):
     cands = load_candidates()
     review = json.loads(REVIEW_JSON.read_text()) if REVIEW_JSON.exists() else {}
     by_source = Counter(c["source"] for c in cands)
     decisions = Counter((review.get(c["id"]) or {}).get("decision", "unreviewed") for c in cands)
+    urban = sum(1 for c in cands if (c.get("town") or {}).get("urban"))
+    print(f"In towns of {URBAN_MIN_POP:,}+: {urban} of {len(cands)}")
     counties = Counter(c["county"] for c in cands if (review.get(c["id"]) or {}).get("decision") == "keep")
     print(f"Candidates: {len(cands)} {dict(by_source)}")
     print(f"Review: {dict(decisions)}")
@@ -593,10 +644,15 @@ def main(argv=None):
     s.add_argument("source", choices=["wvdot", "mapillary"])
     s.add_argument("--count", type=int, default=50, help="candidates to add")
     s.add_argument("--workers", type=int, default=4)
-    s.add_argument("--per-cell", type=int, default=3, help="max candidates per 0.25° cell (spread)")
+    s.add_argument("--urban", action="store_true",
+                   help=f"only towns of {URBAN_MIN_POP:,}+ people (more signs, buildings, context)")
+    s.add_argument("--per-cell", type=int, default=None, help="max candidates per 0.25° cell (default 3; 8 with --urban)")
+    s.add_argument("--min-spacing", type=float, default=None, help="miles between candidates (default 2; 0.75 with --urban)")
     s.add_argument("--max-tries", type=int, default=8, help="give up after count × this many attempts")
     s.add_argument("--seed", type=int, default=None)
     s.set_defaults(func=cmd_sample)
+    a = sub.add_parser("annotate", help="tag existing candidates with town context (no downloads)")
+    a.set_defaults(func=cmd_annotate)
     v = sub.add_parser("verify", help="confirm single-read WVDOT coordinates with neighbor frames")
     v.set_defaults(func=cmd_verify)
     st = sub.add_parser("status", help="counts so far")

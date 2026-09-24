@@ -13,6 +13,7 @@
                    P  people/plates visible   B  blurry/dark/obstructed
                    N  no clues (too generic)  C  coordinates look wrong
                    U  undo decision           F  show unreviewed only
+                   T  towns first (sort)
         -->
         <style>
             * { box-sizing: border-box; }
@@ -58,6 +59,8 @@
             <h1>Photo review</h1>
             <div class="counts" id="counts"></div>
             <label><input type="checkbox" id="only-unreviewed" /> Unreviewed only (F)</label>
+            <label><input type="checkbox" id="towns-first" checked /> Towns first (T)</label>
+            <label><input type="checkbox" id="towns-only" /> Towns only</label>
         </header>
         <main>
             <section class="viewer">
@@ -94,11 +97,16 @@
 
             const cands = await fetch("../work/candidates.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : []));
             let review = await fetch("../work/review.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : {}));
-            let i = cands.findIndex((c) => !review[c.id]);
-            if (i < 0) i = 0;
+            let i = 0;
 
+            const inTown = (c) => !!c.town?.urban;
             function visible() {
-                return $("only-unreviewed").checked ? cands.filter((c) => !review[c.id]) : cands;
+                let list = $("only-unreviewed").checked ? cands.filter((c) => !review[c.id]) : cands;
+                if ($("towns-only").checked) list = list.filter(inTown);
+                // Town photos (signs, storefronts, landmarks) are far more guessable
+                // than a lone rural road, so review them first.
+                if ($("towns-first").checked) list = [...list.filter(inTown), ...list.filter((c) => !inTown(c))];
+                return list;
             }
 
             function render() {
@@ -121,7 +129,9 @@
                 $("strip").hidden = !c.strip;
                 if (c.strip) $("strip").src = `../work/${c.strip}`;
                 $("title").textContent = c.name;
-                $("meta").textContent = `${i + 1} of ${cands.length} · ${c.source} · ${c.captured || "date unknown"} · ${c.credit}`;
+                const t = c.town;
+                const where = t ? (t.urban ? `🏙 in ${t.name} (pop ${t.pop.toLocaleString()})` : `🌲 rural · ${t.miles} mi from ${t.name}`) : "";
+                $("meta").textContent = [where, c.source, c.captured || "date unknown", c.credit].filter(Boolean).join(" · ");
                 $("coords").textContent = `${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`;
                 const badges = [];
                 if (c.source === "wvdot") {
@@ -211,7 +221,13 @@
                 save();
                 render();
             });
-            $("only-unreviewed").addEventListener("change", render);
+            for (const id of ["only-unreviewed", "towns-first", "towns-only"]) {
+                $(id).addEventListener("change", () => {
+                    const list = visible();
+                    if (list.length && !list.includes(cands[i])) i = cands.indexOf(list[0]);
+                    render();
+                });
+            }
             window.addEventListener("keydown", (e) => {
                 const k = e.key.toLowerCase();
                 const map = { k: "keep", p: "people", b: "blurry", n: "noclues", c: "coords" };
@@ -219,11 +235,16 @@
                 else if (e.key === "ArrowRight") step(1);
                 else if (e.key === "ArrowLeft") step(-1);
                 else if (k === "u") $("undo").click();
-                else if (k === "f") {
-                    $("only-unreviewed").checked = !$("only-unreviewed").checked;
-                    render();
+                else if (k === "f" || k === "t") {
+                    const box = $(k === "f" ? "only-unreviewed" : "towns-first");
+                    box.checked = !box.checked;
+                    box.dispatchEvent(new Event("change"));
                 }
             });
+            {
+                const first = visible().find((c) => !review[c.id]);
+                if (first) i = cands.indexOf(first);
+            }
             render();
         </script>
     </body>

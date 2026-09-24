@@ -58,6 +58,12 @@ python scripts/street_images.py status
 - **Mapillary.** The script picks a random point in WV and takes the most recent non-panorama image
   within ~1 km, or ~3 km if there's nothing closer.
 - **Spread.** No two candidates are closer than 2 miles, and each 0.25° grid cell holds at most 3.
+- **Town mode (`--urban`).** WV is mostly forest, so random statewide photos are mostly lone roads with
+  nothing to go on. With `--urban`, Mapillary samples inside the cores of the 63 towns of 2,500+ people
+  (bigger towns more often), and WVDOT keeps only frames that fall inside one. Spacing drops to 0.75 mi
+  and 8 per cell, so a city can contribute several photos. A town's core radius runs from about 0.55 mi
+  (2,500 people) to 2 mi (Charleston). `python scripts/street_images.py annotate` tags existing
+  candidates the same way, and the review page sorts town photos first.
 - **Speed.** It runs at about 5 candidates per minute with 6 workers, and each candidate is saved as it
   arrives, so you can stop and restart anytime.
 
