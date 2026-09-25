@@ -6,6 +6,8 @@ Street-level round photos for WV GeoGuess: sample -> review -> finalize.
          python scripts/street_images.py sample wvdot --count 150
          python scripts/street_images.py sample mapillary --count 150
          python scripts/street_images.py sample mapillary --urban --count 80   # towns only
+         python scripts/street_images.py sample landmarks --count 80           # photos facing courthouses, bridges...
+         python scripts/street_images.py add 123456789 https://www.mapillary.com/app/?pKey=987654321
     2. REVIEW them in the browser (python scripts/serve.py, then open
        http://localhost:8000/tools/review.html) — keep the good ones, reject
        blurry/dark shots, frames with readable people or plates, and wrong
@@ -46,6 +48,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
@@ -78,6 +81,8 @@ def town_radius(pop):
     Kept tight on purpose: town centers have the signs and buildings that make a
     photo guessable; the edges look like any rural road."""
     return max(0.4, min(2.0, math.sqrt(pop) / 90))
+
+
 CELL_DEG = 0.25  # spread: at most --per-cell candidates per 0.25° grid cell
 WVDOT_CROP_BOTTOM = 0.12  # the text strip (and most of the hood) lives in the bottom ~12%
 DARK_LIMIT = 55  # mean brightness (0-255) below this = too dark to play
@@ -201,10 +206,21 @@ def spacing_problem(cands, lon, lat, per_cell):
     return "area already has enough candidates" if in_cell >= per_cell else None
 
 
-def http_get(url, headers=None, timeout=60):
-    req = urllib.request.Request(url, headers=headers or {})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+def http_get(url, headers=None, timeout=60, retries=3):
+    """GET with retries on transient failures (Mapillary returns occasional
+    500s marked is_transient; rate limits come back as 429)."""
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(url, headers=headers or {})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read()
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504) or attempt == retries:
+                raise
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == retries:
+                raise
+        time.sleep(1.5 * 2 ** attempt + random.random())
 
 
 # ---------------------------------------------------------------------------
@@ -450,6 +466,216 @@ def mapillary_candidate(token, rng, wv, cands, per_cell):
 
 
 # ---------------------------------------------------------------------------
+# Landmarks (OpenStreetMap places + Mapillary photos facing them), and
+# hand-picked Mapillary images
+# ---------------------------------------------------------------------------
+
+OSM_RAW = WORK / "osm_raw.json"
+OVERPASS_QUERY = """[out:json][timeout:180];
+area["ISO3166-2"="US-WV"][admin_level=4]->.wv;
+(
+  nwr["amenity"="courthouse"](area.wv);
+  nwr["amenity"="townhall"]["name"](area.wv);
+  nwr["tourism"~"^(attraction|museum|viewpoint)$"]["wikidata"](area.wv);
+  nwr["historic"]["wikidata"](area.wv);
+  nwr["man_made"="bridge"]["name"](area.wv);
+  way["bridge"]["wikidata"](area.wv);
+  nwr["leisure"="stadium"]["name"](area.wv);
+  nwr["amenity"="university"]["name"](area.wv);
+  nwr["building"]["wikidata"](area.wv);
+  nwr["railway"="station"]["name"](area.wv);
+);
+out center tags;"""
+# How often each kind of place is tried: courthouses and big bridges are the
+# most recognizable things in most WV towns.
+POI_WEIGHTS = [
+    ("amenity=courthouse", 5), ("man_made=bridge", 4), ("bridge", 4), ("amenity=university", 3),
+    ("leisure=stadium", 3), ("amenity=townhall", 3), ("tourism", 3), ("railway=station", 2),
+    ("historic", 2), ("building", 2),
+]
+POI_SKIP_NAMES = re.compile(r"farm|cemetery|substation|water tower|fire (station|department)|tank", re.I)
+FACING_MAX_DEG = 30  # the photo's camera heading must point within this of the landmark
+FACING_DIST_M = (15, 200)  # ...from this far away
+MAPILLARY_FIELDS = "id,thumb_2048_url,computed_geometry,geometry,captured_at,is_pano,creator,compass_angle,computed_compass_angle"
+
+
+def _poi_kind(tags):
+    for kind, _ in POI_WEIGHTS:
+        key, _, value = kind.partition("=")
+        if (value and tags.get(key) == value) or (not value and key in tags):
+            return kind
+    return None
+
+
+def load_pois(refresh=False):
+    """Named WV landmarks from OpenStreetMap (© OpenStreetMap contributors, ODbL)."""
+    if refresh or not OSM_RAW.exists():
+        req = urllib.request.Request(
+            "https://overpass-api.de/api/interpreter",
+            data=urllib.parse.urlencode({"data": OVERPASS_QUERY}).encode(),
+            headers={"User-Agent": "WV-GeoGuess content pipeline (WVDOT GIS Day)"},
+        )
+        with urllib.request.urlopen(req, timeout=240) as r:
+            OSM_RAW.write_bytes(r.read())
+    pois = []
+    for e in json.loads(OSM_RAW.read_text())["elements"]:
+        t = e.get("tags", {})
+        name = t.get("name")
+        pt = e.get("center") or e
+        if not name or "lat" not in pt or POI_SKIP_NAMES.search(name):
+            continue
+        kind = _poi_kind(t)
+        if kind:
+            pois.append({"name": name, "kind": kind, "lat": pt["lat"], "lon": pt["lon"],
+                         "osm": f"{e['type']}/{e['id']}", "wikipedia": t.get("wikipedia")})
+    return pois
+
+
+def bearing_deg(lat1, lon1, lat2, lon2):
+    p1, p2, dl = math.radians(lat1), math.radians(lat2), math.radians(lon2 - lon1)
+    y = math.sin(dl) * math.cos(p2)
+    x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    return (math.degrees(math.atan2(y, x)) + 360) % 360
+
+
+def mapillary_images(token, lon, lat, half):
+    q = urllib.parse.urlencode({"fields": MAPILLARY_FIELDS, "bbox": f"{lon - half},{lat - half},{lon + half},{lat + half}", "limit": 100})
+    data = json.loads(http_get(f"https://graph.mapillary.com/images?{q}", headers={"Authorization": f"OAuth {token}"}, timeout=30))
+    return data.get("data", [])
+
+
+def wikipedia_blurb(tag):
+    """First sentence of the English Wikipedia summary for an OSM wikipedia=en:Title tag."""
+    if not tag or not tag.startswith("en:"):
+        return None
+    title = urllib.parse.quote(tag[3:].replace(" ", "_"))
+    try:
+        data = json.loads(http_get(f"https://en.wikipedia.org/api/rest_v1/page/summary/{title}",
+                                   headers={"User-Agent": "WV-GeoGuess (WVDOT GIS Day)"}, timeout=20))
+    except Exception:  # noqa: BLE001 - a fun fact is optional
+        return None
+    text = (data.get("extract") or "").strip()
+    first = re.split(r"(?<=[.!?])\s+", text)[0] if text else ""
+    return (first[:237] + "...") if len(first) > 240 else (first or None)
+
+
+def mapillary_to_candidate(img, wv, *, label=None, fact=None, extra=None, credit_suffix=""):
+    """Download a Mapillary image record and turn it into a candidate (no spacing checks)."""
+    geom = img.get("computed_geometry") or img.get("geometry")
+    ilon, ilat = geom["coordinates"]
+    if not wv.contains(ilon, ilat):
+        return None, "outside WV"
+    raw = http_get(img["thumb_2048_url"])  # thumbnail URLs expire: download now
+    im = Image.open(io.BytesIO(raw)).convert("RGB")
+    brightness = ImageStat.Stat(ImageOps.grayscale(im)).mean[0]
+    cid = f"m_{img['id']}"
+    im.save(CANDIDATES_DIR / f"{cid}.jpg", quality=92)
+    auto_label, county, near = describe(wv, ilon, ilat)
+    captured = datetime.fromtimestamp(img["captured_at"] / 1000, tz=timezone.utc).date().isoformat() if img.get("captured_at") else None
+    user = (img.get("creator") or {}).get("username") or "a Mapillary contributor"
+    cand = {
+        "id": cid,
+        "source": "mapillary",
+        "sourceRef": str(img["id"]),
+        "lon": round(ilon, 6),
+        "lat": round(ilat, 6),
+        "votes": None,
+        "captured": captured,
+        "county": county,
+        "near": near,
+        "town": wv.town_context(ilon, ilat),
+        "name": label or auto_label,
+        "credit": f"© {user}, Mapillary (CC BY-SA 4.0){credit_suffix}",
+        "funFact": fact or ("Crowd-sourced street imagery from Mapillary"
+                            + (f", {datetime.fromisoformat(captured).strftime('%B %Y')}." if captured else ".")),
+        "brightness": round(brightness),
+        "file": f"candidates/{cid}.jpg",
+        "strip": None,
+        "cropBottom": 0,
+    }
+    cand.update(extra or {})
+    return cand, None
+
+
+def landmark_candidate(token, poi, wv, cands, per_cell):
+    """A Mapillary photo taken near `poi` whose camera points at it."""
+    with _lock:
+        if spacing_problem(cands, poi["lon"], poi["lat"], per_cell):
+            return None, "area already covered"
+        if any((c.get("poi") or {}).get("osm") == poi["osm"] for c in cands):
+            return None, "landmark already used"
+    best, best_score = None, None
+    for img in mapillary_images(token, poi["lon"], poi["lat"], 0.002):  # ~200 m
+        if img.get("is_pano") or not img.get("thumb_2048_url"):
+            continue
+        heading = img.get("computed_compass_angle", img.get("compass_angle"))
+        geom = img.get("computed_geometry") or img.get("geometry")
+        if heading is None or not geom:
+            continue
+        ilon, ilat = geom["coordinates"]
+        dist_m = miles_between(ilat, ilon, poi["lat"], poi["lon"]) * 1609.344
+        if not FACING_DIST_M[0] <= dist_m <= FACING_DIST_M[1]:
+            continue
+        off = abs((bearing_deg(ilat, ilon, poi["lat"], poi["lon"]) - heading + 180) % 360 - 180)
+        if off > FACING_MAX_DEG:
+            continue
+        age_years = (time.time() * 1000 - (img.get("captured_at") or 0)) / 3.15e10
+        score = off / FACING_MAX_DEG + dist_m / FACING_DIST_M[1] + min(age_years, 10) / 10
+        if best_score is None or score < best_score:
+            best, best_score = img, score
+    if not best:
+        return None, "no photo facing it"
+    place = wv.nearest_place(poi["lon"], poi["lat"])[0]
+    county = wv.county(poi["lon"], poi["lat"]) or ""
+    where = place if place.lower() not in poi["name"].lower() else county
+    blurb = wikipedia_blurb(poi.get("wikipedia"))
+    cand, why = mapillary_to_candidate(
+        best, wv,
+        label=f"{poi['name']}, {where}" if where else poi["name"],
+        fact=f"{blurb} (Wikipedia)" if blurb else None,
+        extra={"poi": {"name": poi["name"], "kind": poi["kind"], "osm": poi["osm"]}},
+        credit_suffix=" · place: © OpenStreetMap contributors",
+    )
+    if cand and cand["brightness"] < DARK_LIMIT:
+        return None, "too dark"
+    return cand, why
+
+
+def cmd_add(args):
+    """Add hand-picked Mapillary images by ID or URL; they're marked 'keep'."""
+    load_env()
+    token = os.environ.get("MAPILLARY_TOKEN") or sys.exit("Set MAPILLARY_TOKEN (env var or .env)")
+    CANDIDATES_DIR.mkdir(parents=True, exist_ok=True)
+    text = " ".join(args.ids) + (" " + Path(args.file).read_text() if args.file else "")
+    ids = list(dict.fromkeys(re.findall(r"(?:pKey=|/|^|\s)(\d{6,})", text)))
+    if not ids:
+        sys.exit("No Mapillary image IDs found. Paste IDs or URLs like https://www.mapillary.com/app/?pKey=123456789")
+    wv = WV()
+    cands = load_candidates()
+    review = json.loads(REVIEW_JSON.read_text()) if REVIEW_JSON.exists() else {}
+    for mid in ids:
+        try:
+            img = json.loads(http_get(f"https://graph.mapillary.com/{mid}?fields={MAPILLARY_FIELDS}",
+                                      headers={"Authorization": f"OAuth {token}"}, timeout=30))
+        except Exception as e:  # noqa: BLE001
+            print(f"FAIL {mid}: {e}")
+            continue
+        if img.get("is_pano") and not args.allow_pano:
+            print(f"skip {mid}: 360-degree panorama (looks warped as a flat photo; --allow-pano to force)")
+            continue
+        cand, why = mapillary_to_candidate(img, wv, extra={"handpicked": True})
+        if not cand:
+            print(f"skip {mid}: {why}")
+            continue
+        cands = [c for c in cands if c["id"] != cand["id"]] + [cand]
+        review[cand["id"]] = {"decision": "keep", "handpicked": True}
+        print(f"  + {cand['name']}  ({cand['credit']})")
+    save_candidates(cands)
+    REVIEW_JSON.write_text(json.dumps(review, indent=1))
+    print("Hand-picked images are marked 'keep'; they show up in tools/review.html too.")
+
+
+# ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
 
@@ -457,9 +683,11 @@ def cmd_sample(args):
     global TESSERACT, URBAN, MIN_SPACING
     load_env()
     URBAN = args.urban
-    MIN_SPACING = args.min_spacing if args.min_spacing is not None else (0.75 if URBAN else MIN_SPACING_MILES)
+    landmarks = args.source == "landmarks"
+    MIN_SPACING = args.min_spacing if args.min_spacing is not None else (
+        0.3 if landmarks else 0.75 if URBAN else MIN_SPACING_MILES)
     if args.per_cell is None:
-        args.per_cell = 8 if URBAN else 3
+        args.per_cell = 20 if landmarks else 8 if URBAN else 3
     TESSERACT = os.environ.get("TESSERACT_EXE") or TESSERACT  # .env may set it
     CANDIDATES_DIR.mkdir(parents=True, exist_ok=True)
     wv = WV()
@@ -475,6 +703,21 @@ def cmd_sample(args):
         src = Wvdot(base)
         print(f"WVDOT: {len(src.dates())} recording dates")
         make = lambda r: wvdot_candidate(src, r, wv, cands, args.per_cell)  # noqa: E731
+    elif args.source == "landmarks":
+        token = os.environ.get("MAPILLARY_TOKEN") or sys.exit("Set MAPILLARY_TOKEN (env var or .env)")
+        pois = load_pois(refresh=args.refresh_places)
+        weights = dict(POI_WEIGHTS)
+        # weighted shuffle: courthouses and bridges come up first more often
+        order = sorted(pois, key=lambda p: rng.random() ** (1 / weights[p["kind"]]), reverse=True)
+        queue_lock = threading.Lock()
+        print(f"Landmarks: {len(pois)} named WV places from OpenStreetMap")
+
+        def make(_r):
+            with queue_lock:
+                if not order:
+                    return None, "no landmarks left"
+                poi = order.pop(0)
+            return landmark_candidate(token, poi, wv, cands, args.per_cell)
     else:
         token = os.environ.get("MAPILLARY_TOKEN")
         if not token:
@@ -641,7 +884,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("sample", help="download candidates")
-    s.add_argument("source", choices=["wvdot", "mapillary"])
+    s.add_argument("source", choices=["wvdot", "mapillary", "landmarks"],
+                   help="landmarks = Mapillary photos facing named OpenStreetMap places")
+    s.add_argument("--refresh-places", action="store_true", help="re-download the OpenStreetMap place list")
     s.add_argument("--count", type=int, default=50, help="candidates to add")
     s.add_argument("--workers", type=int, default=4)
     s.add_argument("--urban", action="store_true",
@@ -651,6 +896,11 @@ def main(argv=None):
     s.add_argument("--max-tries", type=int, default=8, help="give up after count × this many attempts")
     s.add_argument("--seed", type=int, default=None)
     s.set_defaults(func=cmd_sample)
+    ad = sub.add_parser("add", help="add hand-picked Mapillary images by ID or URL (marked keep)")
+    ad.add_argument("ids", nargs="*", help="image IDs or mapillary.com URLs")
+    ad.add_argument("--file", help="text file with IDs/URLs, one per line")
+    ad.add_argument("--allow-pano", action="store_true")
+    ad.set_defaults(func=cmd_add)
     a = sub.add_parser("annotate", help="tag existing candidates with town context (no downloads)")
     a.set_defaults(func=cmd_annotate)
     v = sub.add_parser("verify", help="confirm single-read WVDOT coordinates with neighbor frames")

@@ -59,7 +59,7 @@
             <h1>Photo review</h1>
             <div class="counts" id="counts"></div>
             <label><input type="checkbox" id="only-unreviewed" /> Unreviewed only (F)</label>
-            <label><input type="checkbox" id="towns-first" checked /> Towns first (T)</label>
+            <label><input type="checkbox" id="towns-first" checked /> Landmarks &amp; towns first (T)</label>
             <label><input type="checkbox" id="towns-only" /> Towns only</label>
         </header>
         <main>
@@ -99,13 +99,15 @@
             let review = await fetch("../work/review.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : {}));
             let i = 0;
 
-            const inTown = (c) => !!c.town?.urban;
+            const inTown = (c) => !!c.town?.urban || !!c.poi || !!c.handpicked;
+            // Sort order: hand-picked, then photos facing a landmark, then town photos, then the rest.
+            const rank = (c) => (c.handpicked ? 0 : c.poi ? 1 : c.town?.urban ? 2 : 3);
             function visible() {
                 let list = $("only-unreviewed").checked ? cands.filter((c) => !review[c.id]) : cands;
                 if ($("towns-only").checked) list = list.filter(inTown);
                 // Town photos (signs, storefronts, landmarks) are far more guessable
                 // than a lone rural road, so review them first.
-                if ($("towns-first").checked) list = [...list.filter(inTown), ...list.filter((c) => !inTown(c))];
+                if ($("towns-first").checked) list = [...list].sort((a, b) => rank(a) - rank(b));
                 return list;
             }
 
@@ -130,7 +132,9 @@
                 if (c.strip) $("strip").src = `../work/${c.strip}`;
                 $("title").textContent = c.name;
                 const t = c.town;
-                const where = t ? (t.urban ? `🏙 in ${t.name} (pop ${t.pop.toLocaleString()})` : `🌲 rural · ${t.miles} mi from ${t.name}`) : "";
+                const where = c.handpicked ? "⭐ hand-picked"
+                    : c.poi ? `🏛 facing ${c.poi.name}`
+                    : t ? (t.urban ? `🏙 in ${t.name} (pop ${t.pop.toLocaleString()})` : `🌲 rural · ${t.miles} mi from ${t.name}`) : "";
                 $("meta").textContent = [where, c.source, c.captured || "date unknown", c.credit].filter(Boolean).join(" · ");
                 $("coords").textContent = `${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`;
                 const badges = [];

@@ -23,8 +23,13 @@ site.
 | Privacy | Faces and plates are **not** blurred, so reject those frames in review | Blurred by Mapillary |
 | Secret | `WVDOT_FRAMES_URL`: a pre-authenticated, **listable** bucket URL | `MAPILLARY_TOKEN` |
 
-Google Street View **can't** be used: its terms forbid bulk downloading, caching or storing images, and
-showing Street View next to a non-Google map (Google Maps Platform Terms §3.2.3).
+Place names come from **OpenStreetMap** (© OpenStreetMap contributors, ODbL). Fun facts come from
+**Wikipedia** (CC BY-SA). Landmark photos carry both credits.
+
+Google Street View **can't** be used, not even as manual screenshots. Google's geo guidelines say "You may not
+screenshot Street View imagery … for any purpose", including nonprofit use. Its API terms also forbid bulk
+downloading, caching, or storing images, and showing Street View next to a non-Google map (Google Maps
+Platform Terms §3.2.3).
 
 Put both secrets in a `.env` file in the repo root. It's git-ignored, and the scripts read it:
 
@@ -64,6 +69,15 @@ python scripts/street_images.py status
   and 8 per cell, so a city can contribute several photos. A town's core radius runs from about 0.55 mi
   (2,500 people) to 2 mi (Charleston). `python scripts/street_images.py annotate` tags existing
   candidates the same way, and the review page sorts town photos first.
+- **Landmarks (`sample landmarks`).** This is the most guessable source. It takes about 880 named WV
+  places from OpenStreetMap (courthouses, bridges, universities, stadiums, town halls, museums,
+  historic buildings), with courthouses and bridges tried most often. For each, it finds a Mapillary
+  photo taken 15–200 m away whose **camera heading points at the place** (within 30°). The reveal name
+  becomes, for example, "Kanawha County Courthouse, Charleston". The fun fact is the first sentence of
+  the place's Wikipedia article, when it has one.
+- **Hand-picked (`add`).** Browse [mapillary.com/app](https://www.mapillary.com/app), copy a photo's
+  URL (it contains `pKey=…`), and run `python scripts/street_images.py add <URL or ID> …`. These are
+  marked "keep" automatically. 360° panoramas are skipped because they look warped as flat photos.
 - **Speed.** It runs at about 5 candidates per minute with 6 workers, and each candidate is saved as it
   arrives, so you can stop and restart anytime.
 
