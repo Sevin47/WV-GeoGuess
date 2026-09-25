@@ -906,18 +906,34 @@ def cmd_finalize(args):
         sys.exit("No kept candidates yet — review them first (tools/review.html).")
     rng = random.Random(args.seed)
     rng.shuffle(kept)  # round numbers must not follow source, date, or place
-    kept = kept[: args.count]
-
     ROUNDS_DIR.mkdir(parents=True, exist_ok=True)
-    stale = [p for p in ROUNDS_DIR.glob("r[0-9][0-9][0-9].jpg")]
-    if stale and not args.overwrite:
-        sys.exit(f"{len(stale)} r###.jpg files already in {ROUNDS_DIR}; re-run with --overwrite to replace them.")
-    for p in stale:
-        p.unlink()
 
-    features, problems = [], 0
-    for i, c in enumerate(kept, 1):
-        lid = f"r{i:03d}"
+    if args.append:
+        # Keep every landmark_id already finalized (and uploaded, with round
+        # numbers set in AGOL); only NEW keeps get the next free ids.
+        if not ANSWERS_GEOJSON.exists():
+            sys.exit("Nothing to append to yet; run finalize without --append first.")
+        features = json.loads(ANSWERS_GEOJSON.read_text())["features"]
+        done = {f["properties"]["_source_ref"] for f in features}
+        kept = [c for c in kept if c["sourceRef"] not in done]
+        next_n = 1 + max(int(f["properties"]["landmark_id"][1:]) for f in features)
+        numbered = [(f"r{next_n + i:03d}", c) for i, c in enumerate(kept)]
+        if not numbered:
+            sys.exit("No new kept photos to append.")
+    else:
+        kept = kept[: args.count]
+        stale = [p for p in ROUNDS_DIR.glob("r[0-9][0-9][0-9].jpg")]
+        if stale and not args.overwrite:
+            sys.exit(f"{len(stale)} r###.jpg files already in {ROUNDS_DIR}. Use --append to add new keeps "
+                     "without renumbering (ids already in AGOL keep their round numbers), or --overwrite "
+                     "to renumber everything from scratch.")
+        for p in stale:
+            p.unlink()
+        features = []
+        numbered = [(f"r{i:03d}", c) for i, c in enumerate(kept, 1)]
+
+    problems = 0
+    for lid, c in numbered:
         im = Image.open(WORK / c["file"]).convert("RGB")
         if c.get("cropBottom"):
             im = im.crop((0, 0, im.width, int(im.height * (1 - c["cropBottom"]))))
@@ -948,7 +964,8 @@ def cmd_finalize(args):
             "geometry": {"type": "Polygon", "coordinates": [circle(c["lon"], c["lat"], HIT_RADIUS_MILES)]},
         })
     ANSWERS_GEOJSON.write_text(json.dumps({"type": "FeatureCollection", "features": features}, indent=1))
-    print(f"Wrote {len(features)} photos to {ROUNDS_DIR} and answers to {ANSWERS_GEOJSON} (PRIVATE — keep it out of git).")
+    print(f"Wrote {len(numbered)} photos ({', '.join(lid for lid, _ in numbered)}) to {ROUNDS_DIR}; "
+          f"{ANSWERS_GEOJSON} now has {len(features)} answers (PRIVATE, keep it out of git).")
     print("Next: python scripts/load_landmarks.py  (dry run), then add --apply.")
     sys.exit(1 if problems else 0)
 
@@ -987,7 +1004,9 @@ def main(argv=None):
     f = sub.add_parser("finalize", help="write round photos + private answers from the kept set")
     f.add_argument("--count", type=int, default=100)
     f.add_argument("--seed", type=int, default=2026)
-    f.add_argument("--overwrite", action="store_true", help="replace existing assets/rounds/r###.jpg")
+    f.add_argument("--overwrite", action="store_true", help="renumber everything from scratch (replaces r###.jpg)")
+    f.add_argument("--append", action="store_true",
+                   help="only add new keeps as the next ids; existing ids (and their AGOL round numbers) stay put")
     f.set_defaults(func=cmd_finalize)
     args = ap.parse_args(argv)
     args.func(args)

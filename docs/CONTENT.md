@@ -133,6 +133,11 @@ This writes the kept candidates, shuffled, as `assets/rounds/r001.jpg` …:
 It also writes the answers to `work/landmarks.geojson`, with a **0.5-mile hit circle** around each photo
 location.
 
+**Adding more photos later:** use `finalize --append`. It gives only the new keeps the next ids
+(`r039`, …) and leaves every existing photo, id, and answer untouched, so round numbers already set in
+AGOL stay correct. Plain `finalize` refuses to run once photos exist; `--overwrite` renumbers
+everything from scratch.
+
 Then upload. The first command is a dry run with checks only:
 
 ```bash
