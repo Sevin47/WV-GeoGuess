@@ -21,6 +21,7 @@ import { sdkReady, setupWVMap, makePinSymbol, animatePinDrop, zoomToLonLats } fr
 import { validateNickname } from "./names.js";
 import { playerTag, leaderboardRank } from "./round.js";
 import { formatMiles } from "./scoring.js";
+import { makeZoomable } from "./zoom.js";
 
 const CONFIG = window.ARCGIGUESS_CONFIG;
 const live = resolveLiveConfig(CONFIG.live, location.search);
@@ -202,7 +203,7 @@ function renderResult(el) {
     el.replaceChildren(
         div("headline", headline),
         div("line", line),
-        div("answer", `It was ${r.answer?.name ?? "—"}.`),
+        div("answer", `📍 ${r.answer?.name ?? "—"}`),
         ...(r.answer?.funFact ? [div("fact", r.answer.funFact)] : [])
     );
 }
@@ -446,11 +447,18 @@ $("confirm").addEventListener("click", async () => {
     }
 });
 
+const zoom = makeZoomable($("zoom-stage"), $("photo-full-img"));
 $("photo-thumb").addEventListener("click", () => {
-    $("photo-full-img").src = $("photo-thumb-img").src;
+    const img = $("photo-full-img");
+    const src = $("photo-thumb-img").src;
     $("photo-full").showModal();
+    if (img.src !== src) img.src = src; // fits itself on load
+    else zoom.fit();
 });
-$("photo-full").addEventListener("click", () => $("photo-full").close());
+$("zoom-in").addEventListener("click", () => zoom.zoomIn());
+$("zoom-out").addEventListener("click", () => zoom.zoomOut());
+$("zoom-fit").addEventListener("click", () => zoom.reset());
+$("photo-close").addEventListener("click", () => $("photo-full").close());
 
 // --- Start -------------------------------------------------------------------------
 

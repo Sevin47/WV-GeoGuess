@@ -229,13 +229,68 @@ body[data-screen="result"] #confirm { display: none; }
 .photo-full {
     border: 0;
     padding: 0;
-    background: transparent;
-    max-width: 100vw;
-    max-height: 100dvh;
-    text-align: center;
+    margin: 0;
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    background: #000;
+    color: #fff;
+    overflow: hidden;
 }
-.photo-full::backdrop { background: rgba(0, 0, 0, 0.9); }
-.photo-full img { max-width: 100vw; max-height: 85dvh; display: block; margin: 0 auto; }
+.photo-full::backdrop { background: #000; }
+.zoom-stage {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    touch-action: none; /* our own pinch/pan, not the browser's */
+    cursor: grab;
+}
+.zoom-stage img {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+    user-select: none;
+    -webkit-user-drag: none;
+    max-width: none;
+}
+.zoom-hint {
+    position: absolute;
+    top: calc(10px + var(--safe-top));
+    left: 0;
+    right: 0;
+    margin: 0;
+    text-align: center;
+    font-size: 0.85rem;
+    opacity: 0.8;
+    pointer-events: none;
+    text-shadow: 0 1px 3px #000;
+}
+.zoom-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(12px + var(--safe-bottom));
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+.zoom-btn {
+    font: inherit;
+    font-weight: 700;
+    font-size: 1.2rem;
+    min-width: 56px;
+    min-height: 52px;
+    padding: 0 14px;
+    border-radius: 12px;
+    border: 0;
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+    backdrop-filter: blur(4px);
+}
+.zoom-btn.close { background: var(--gold); color: var(--navy); }
 
 /* ---- Connection banner -------------------------------------------------- */
 .net-banner {

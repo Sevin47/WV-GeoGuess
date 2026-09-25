@@ -95,9 +95,18 @@
 
         <div id="net-banner" class="net-banner" role="status" hidden>Connection trouble — retrying…</div>
 
-        <dialog id="photo-full" class="photo-full">
-            <img id="photo-full-img" alt="Photo of the place to find" />
-            <p class="muted">Tap anywhere to close</p>
+        <!-- Zoomable photo (js/zoom.js): pinch / double-tap / drag, or the buttons. -->
+        <dialog id="photo-full" class="photo-full" aria-label="Photo of the place to find, zoomable">
+            <div id="zoom-stage" class="zoom-stage">
+                <img id="photo-full-img" alt="Photo of the place to find" draggable="false" />
+            </div>
+            <p class="zoom-hint">Pinch or double-tap to zoom · drag to look around</p>
+            <div class="zoom-bar">
+                <button id="zoom-out" class="zoom-btn" aria-label="Zoom out">−</button>
+                <button id="zoom-fit" class="zoom-btn" aria-label="Fit the whole photo">Fit</button>
+                <button id="zoom-in" class="zoom-btn" aria-label="Zoom in">+</button>
+                <button id="photo-close" class="zoom-btn close" aria-label="Close the photo">✕ Close</button>
+            </div>
         </dialog>
 
         <script src="config.js"></script>
