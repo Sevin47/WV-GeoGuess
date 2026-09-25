@@ -159,13 +159,12 @@ other way (for example, publishing from Pro in another SR), change `live.agol.gu
    - **Setting 0 may not stick.** In our org, saving 0 in the UI reported success but reverted to
      30 (2026-09-24), and setting it from Python didn't stick either. AGOL appears to treat 0 as "not
      set". A low non-zero value (e.g. 10 s) is the realistic minimum.
-   - Until it's lowered, phones still get fresh state. The game adds a unique parameter to every poll
-     (`live.agol.cacheBust: true`), and each of those requests is a CDN miss (`X-Cache: TCP_MISS`,
-     measured). With cache-busting on, this setting doesn't matter.
-   - **Tradeoff to revisit after the Phase 6 load test.** Cache-busting sends every poll straight to
-     AGOL: about 60 requests per second with 150 phones. If that proves too much, set `cacheBust:
-     false` and a short cache here (e.g. 5 s). The CDN then absorbs nearly all polling, and phones see
-     changes up to that many seconds late.
+   - **It doesn't matter for the game.** Phones add a *time-bucketed* parameter to every poll
+     (`live.agol.cacheBust` + `cacheBucketMs: 2000`). All phones polling within the same 2 seconds
+     request the identical URL, so the CDN answers them from **one** AGOL request per bucket, and state
+     is at most ~2 s stale. Load test 2026-09-25 (docs/NOTES.md §4f): with a unique parameter per poll,
+     200 simulated phones from one IP got **rate-limited (HTTP 429) within about 2 minutes**. With
+     time buckets: 29,120 polls, 0 errors.
 3. **Share** the view with **Everyone**. Leave the source table private.
 
 ---

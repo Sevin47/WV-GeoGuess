@@ -457,9 +457,17 @@ function createAgolBackend(role, live, deps) {
                 body: p.toString(),
             });
         } else {
-            // Public views can be CDN-cached; a unique param forces a fresh read.
-            if (agol.cacheBust !== false) p.set("_", String(now()));
-            res = await fetchFn(`${url}?${p}`, { cache: "no-store" });
+            // Public views are CDN-cached (max-age 30 s, and AGOL won't go lower
+            // than that). A per-request unique param bypasses the CDN entirely,
+            // and 200 bots doing that got this IP rate-limited (HTTP 429) in
+            // the load test. Instead, every phone uses the same param within a
+            // time bucket: the CDN answers them all from ONE request to AGOL
+            // per bucket, and state is at most one bucket stale.
+            const bucket = agol.cacheBucketMs ?? 0;
+            if (agol.cacheBust !== false) p.set("_", String(bucket > 0 ? Math.floor(now() / bucket) : now()));
+            // no-store makes browsers send Cache-Control: no-cache, which can
+            // push the CDN back to AGOL; only use it for per-request busting.
+            res = await fetchFn(`${url}?${p}`, bucket > 0 ? {} : { cache: "no-store" });
         }
         if (!res.ok) throw new BackendError(`HTTP ${res.status} from ${url}`, { code: "HTTP" });
         const json = await res.json();

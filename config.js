@@ -215,7 +215,10 @@ window.ARCGIGUESS_CONFIG = {
         joinUrl: null,
 
         // Milliseconds between state polls, per phase (brief §3.2). ±jitter.
-        polling: { lobby: 5000, final: 10000, default: 2500, jitter: 0.25 },
+        // Lobby was 5 s to spare AGOL; with time-bucketed CDN caching (cacheBucketMs)
+        // AGOL's load no longer grows with phones, so faster is free. Load test
+        // 2026-09-25: 200 bots, 0 errors; round starts seen in <=7 s at lobby 5 s.
+        polling: { lobby: 3000, final: 10000, default: 2500, jitter: 0.25 },
 
         mock: {
             landmarksUrl: "data/mock/landmarks.geojson",
@@ -237,7 +240,11 @@ window.ARCGIGUESS_CONFIG = {
             guessesPublicUrl: "https://services2.arcgis.com/xLpB90lOmCXYDAWo/arcgis/rest/services/WV_GeoGuess_Guesses_Public/FeatureServer/0",
             guessLayerWkid: 102100, // addFeatures has no inSR; send in layer SR
             createdField: "CreationDate", // editor-tracking field
-            cacheBust: true, // unique param on public state polls
+            cacheBust: true, // time-bucket param on public state polls (see cacheBucketMs)
+            // All phones share one CDN-cached request per bucket, so AGOL sees
+            // ~1 poll per bucket instead of one per phone. Staleness <= bucket.
+            // 0 = unique per request (bypasses the CDN; got rate-limited at 200 bots).
+            cacheBucketMs: 2000,
             // Only if the org uses single sign-on (docs/AGOL_SETUP.md §7).
             // A public client ID — never a client secret or API key.
             oauthClientId: null,

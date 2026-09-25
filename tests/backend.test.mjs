@@ -182,6 +182,18 @@ test("agol player: state polls the public view with GET + cache buster", async (
     assert.equal(calls[0].params._, "42");
 });
 
+test("agol player: time-bucketed cache buster so phones share CDN-cached requests", async () => {
+    const { fn, calls } = fakeFetch(() => ({ features: [] }));
+    let t = 10_000;
+    const player = createPlayerBackend({ ...AGOL, agol: { ...AGOL.agol, cacheBucketMs: 2000 } }, { fetch: fn, now: () => t });
+    await player.getState("test-a");
+    t = 11_999; // same 2-second bucket -> identical URL
+    await player.getState("test-a");
+    t = 12_000; // next bucket -> new URL
+    await player.getState("test-a");
+    assert.deepEqual(calls.map((c) => c.params._), ["5", "5", "6"]);
+});
+
 test("agol host: updates by objectId with a token; refuses production sessions", async () => {
     const { fn, calls } = fakeFetch((c) =>
         c.path.endsWith("/query")

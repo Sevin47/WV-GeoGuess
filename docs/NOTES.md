@@ -325,6 +325,39 @@ Guesses tables.
 
 ---
 
+## 4f. Phase 6: load test (`tools/bots.mjs`)
+
+This is a Node script that runs N simulated phones through the same `js/backend.js` code as `play.html`:
+the same jittered polling, and one guess per round at a random moment (3% deliberately late). It reports
+poll latency, errors by kind, guess failures, and **propagation** (host write → bot sees it; run it on the
+host's PC so the clocks match). A JSON report goes to `work/`. `--backend mock --self-host` tests the
+tool itself with no AGOL.
+
+To run it:
+
+```bash
+node tools/bots.mjs --session test-load-1 --bots 200
+```
+
+Then play the rounds on `host.html?backend=agol&session=test-load-1`.
+
+**Results on the real AGOL layers, 200 bots from one PC (= one venue Wi-Fi IP), 2026-09-25:**
+
+| Polling | Outcome |
+|---|---|
+| Unique cache-buster per poll (bypasses the CDN) | ~70 polls/s reached AGOL. **HTTP 429 after ~2 min**, then polls were almost fully blocked. Test stopped. |
+| **Time-bucketed** cache-buster, 2 s (`cacheBucketMs`) | 6 rounds, 444 s, **29,120 polls, 0 errors**. 1,200 guesses, 0 failed. Poll p50 83 ms / p95 184 ms (CDN hits). |
+
+- **Propagation with time buckets:** usually 1.5–3 s, and at most ~7 s. The slow cases were round
+  starts straight from the lobby, which then polled every 5 s. The lobby now polls every 3 s, which is
+  free now that AGOL's load doesn't grow with the number of phones.
+- **Guesses:** `addFeatures` isn't cached and wasn't throttled. That's 200 adds spread over a 45 s
+  round.
+- **Clean-up:** test rows live in the Guesses and State tables under sessions `test-load-1` and
+  `test-load-2`. They can be deleted from the Data tab.
+
+---
+
 ## 4. Other things to know before changing code
 
 **Answer leaks and anti-cheat (brief §3.6)**
