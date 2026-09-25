@@ -358,6 +358,31 @@ Then play the rounds on `host.html?backend=agol&session=test-load-1`.
 
 ---
 
+## 4g. Phase 7: event-day polish
+
+- **Defaults.**
+  - `live.backend` is `agol` and `defaultSessionId` is `gisday2026`, so the QR URL is just
+    `play.html?session=gisday2026`.
+  - Host writes are allowed only for `test-*` sessions plus `live.eventSessions` (`["gisday2026"]`).
+    `allowProductionWrites` stays false.
+  - For local development add `?backend=mock`.
+- **Solo mode ("play at home", `index.html`).**
+  - It no longer uses the upstream Dubai web map. It builds the same WV map as the live game
+    (`setupWVMap`) and reads the answers from `soloLayerUrl` (the `WV_GeoGuess_Landmarks_Solo` view).
+    Games are 10 random rounds from the pool.
+  - That view is private until after the event. The page checks anonymously first and shows "Play at
+    home opens after WVDOT GIS Day" instead of an ArcGIS sign-in dialog.
+  - Tested both ways: the private view gives the closed message, and a public test layer gives a full
+    round.
+- **Other additions.**
+  - `tools/tent.html`: printable folded QR table tent.
+  - `assets/social.jpg`: WV link preview; it uses a pool photo, not a live round.
+  - The phones' final screen has a "Play more at home" button.
+  - `street_images.py answer-key`: private, printable answer key for Fallback B.
+  - `docs/RUNBOOK.md` and a rewritten README.
+
+---
+
 ## 4. Other things to know before changing code
 
 **Answer leaks and anti-cheat (brief §3.6)**

@@ -852,6 +852,26 @@ def cmd_annotate(_args):
     print(f"Annotated {len(cands)} candidates: {urban} in a town of {URBAN_MIN_POP:,}+, {len(cands) - urban} rural.")
 
 
+def cmd_answer_key(_args):
+    """A PRINTABLE, PRIVATE answer key (work/answer-key.html) for Fallback B:
+    if AGOL is down, show the photos and read the answers off paper."""
+    import html
+    fc = json.loads(ANSWERS_GEOJSON.read_text()) if ANSWERS_GEOJSON.exists() else sys.exit("Run finalize first.")
+    rows = []
+    for f in sorted(fc["features"], key=lambda f: f["properties"]["landmark_id"]):
+        p = f["properties"]
+        rows.append(
+            f"<tr><td><img src='../{html.escape(p['image_path'])}'></td><td><b>{html.escape(p['landmark_id'])}</b></td>"
+            f"<td><b>{html.escape(p['name'])}</b><br><small>{html.escape(p.get('fun_fact') or '')}</small>"
+            f"<br><small>{p['_lat']:.5f}, {p['_lon']:.5f}</small></td></tr>")
+    out = WORK / "answer-key.html"
+    out.write_text("<!doctype html><meta charset=utf-8><title>WV GeoGuess answer key (PRIVATE)</title>"
+                   "<style>body{font:12px system-ui}img{width:160px}td{border-bottom:1px solid #ccc;padding:4px;vertical-align:top}"
+                   "tr{break-inside:avoid}</style><h1>WV GeoGuess answer key — PRIVATE, do not share</h1>"
+                   f"<table>{''.join(rows)}</table>", encoding="utf-8")
+    print(f"Wrote {out} ({len(rows)} rounds). Open it through scripts/serve.py and print; keep it off the projector.")
+
+
 def cmd_status(_args):
     cands = load_candidates()
     review = json.loads(REVIEW_JSON.read_text()) if REVIEW_JSON.exists() else {}
@@ -956,6 +976,8 @@ def main(argv=None):
     ad.add_argument("--file", help="text file with IDs/URLs, one per line")
     ad.add_argument("--allow-pano", action="store_true")
     ad.set_defaults(func=cmd_add)
+    k = sub.add_parser("answer-key", help="printable private answer key (work/answer-key.html) for Fallback B")
+    k.set_defaults(func=cmd_answer_key)
     a = sub.add_parser("annotate", help="tag existing candidates with town context (no downloads)")
     a.set_defaults(func=cmd_annotate)
     v = sub.add_parser("verify", help="confirm single-read WVDOT coordinates with neighbor frames")

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>WV GeoGuess — Table tent</title>
+        <!--
+            Printable table tent (brief §7): one Letter page, fold across the
+            middle, and both sides read upright. Open it from the HOSTED site
+            (e.g. https://sevin47.github.io/WV-GeoGuess/tools/tent.html) so the
+            QR code points at the real play page, then print at 100% scale.
+              ?session=gisday2026   which session the QR joins (default: config)
+        -->
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"
+            integrity="sha512-ZDSPMa/JM1D+7kdg2x3BsruQ6T/JpJo3jWDWkCZsP+5yVyp1KfESqLI+7RqB5k24F7p2cV7i2YHh/890y6P6Sw=="
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"
+        ></script>
+        <style>
+            @page { size: letter portrait; margin: 0.35in; }
+            * { box-sizing: border-box; }
+            html, body { margin: 0; font-family: system-ui, "Segoe UI", Roboto, sans-serif; color: #002855; }
+            body { background: #e5e7eb; }
+            .page { width: 7.8in; height: 10.3in; margin: 0.3in auto; background: #fff; display: flex; flex-direction: column; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2); }
+            .panel { flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.45in; padding: 0.35in 0.45in; }
+            .panel.top { transform: rotate(180deg); } /* reads upright from the other side once folded */
+            .fold { border-top: 1px dashed #9ca3af; position: relative; }
+            .fold span { position: absolute; left: 50%; transform: translate(-50%, -50%); background: #fff; padding: 0 8px; font-size: 9pt; color: #6b7280; }
+            .text { flex: 1; display: flex; flex-direction: column; gap: 0.12in; }
+            .text img { width: 2.6in; }
+            h1 { font-size: 30pt; margin: 0; line-height: 1.05; }
+            .sub { font-size: 14pt; margin: 0; color: #334155; }
+            .url { font-size: 12pt; font-weight: 700; color: #b38300; word-break: break-all; margin: 0; }
+            .small { font-size: 10pt; color: #475569; margin: 0; }
+            .qr { width: 3.1in; height: 3.1in; flex: 0 0 auto; }
+            .qr svg { width: 100%; height: 100%; display: block; }
+            .toolbar { text-align: center; padding: 12px; }
+            .toolbar button { font: inherit; font-weight: 700; padding: 10px 18px; border-radius: 8px; border: 0; background: #002855; color: #fff; cursor: pointer; }
+            @media print {
+                body { background: #fff; }
+                .toolbar { display: none; }
+                .page { margin: 0; box-shadow: none; width: auto; height: 10.3in; }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="toolbar">
+            <button onclick="print()">Print</button>
+            <p class="small" id="note"></p>
+        </div>
+        <div class="page">
+            <section class="panel top"></section>
+            <div class="fold"><span>fold here</span></div>
+            <section class="panel bottom"></section>
+        </div>
+
+        <script src="../config.js"></script>
+        <script>
+            const CONFIG = window.ARCGIGUESS_CONFIG;
+            const params = new URLSearchParams(location.search);
+            const session = params.get("session") || CONFIG.live.defaultSessionId;
+            const url = new URL("../play.html", location.href);
+            url.searchParams.set("session", session);
+            const joinUrl = url.href;
+
+            const qr = qrcode(0, "M");
+            qr.addData(joinUrl);
+            qr.make();
+            const svg = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+
+            for (const panel of document.querySelectorAll(".panel")) {
+                panel.innerHTML = `
+                    <div class="text">
+                        <img src="../assets/logo.svg" alt="WV GeoGuess" />
+                        <h1>How well do you know West&nbsp;Virginia?</h1>
+                        <p class="sub">Scan to play along during the breaks. Guess where each photo was taken!</p>
+                        <p class="url"></p>
+                        <p class="small">No app, no sign-up — just your name.</p>
+                    </div>
+                    <div class="qr" aria-label="QR code to join the game">${svg}</div>`;
+                panel.querySelector(".url").textContent = joinUrl.replace(/^https?:\/\//, "");
+            }
+            document.getElementById("note").textContent =
+                location.hostname === "localhost"
+                    ? "⚠ Opened from localhost: phones can't reach this URL. Print from the hosted site instead."
+                    : `QR joins session "${session}". Print at 100% scale, fold on the dashed line.`;
+        </script>
+    </body>
+</html>

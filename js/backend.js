@@ -510,10 +510,12 @@ function createAgolBackend(role, live, deps) {
     }
 
     function assertWritable(sessionId) {
-        if (!isTestSession(sessionId) && !live.allowProductionWrites) {
+        // test-* sessions, plus the named event session(s) — not "anything".
+        const allowed = isTestSession(sessionId) || (live.eventSessions || []).includes(sessionId) || live.allowProductionWrites;
+        if (!allowed) {
             throw new BackendError(
-                `Refusing to write session "${sessionId}": only test-* sessions are writable ` +
-                    `unless CONFIG.live.allowProductionWrites is true`,
+                `Refusing to write session "${sessionId}": only test-* sessions and ` +
+                    `CONFIG.live.eventSessions (${(live.eventSessions || []).join(", ") || "none"}) are writable`,
                 { code: "PRODUCTION_WRITE_BLOCKED" }
             );
         }

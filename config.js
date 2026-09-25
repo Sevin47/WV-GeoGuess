@@ -32,7 +32,7 @@ window.ARCGIGUESS_CONFIG = {
     // rather than pointing config at new paths:
     //   assets/logo.svg        the start-screen & results-card logo
     //   assets/pin.svg         the marker dropped where the player guesses
-    //   assets/screenshot.png  the README image and social link-preview
+    //   assets/social.jpg      the README image and social link-preview (1200x630)
 
     /* -------------------------------------------------------------------------
      * 2. THE MAP & LANDMARK DATA
@@ -43,16 +43,17 @@ window.ARCGIGUESS_CONFIG = {
     // "https://gis.example.com/portal".
     portalUrl: null,
 
-    // TODO(Phase 3): replace with the WV web map once the landmark data exists.
-    // PLACEHOLDER: this is the upstream ArcGIGuess Dubai demo map. It keeps
-    // solo mode playable end to end until our own layers are published.
-    webMapItemId: "707a71d354c540f78c2f9101eead4c09",
+    // SOLO MODE ("play at home", index.html) reads the answers straight from
+    // this view of the Landmarks layer, on the same WV map as the live game.
+    // It stays PRIVATE until after GIS Day (it holds every answer); until
+    // then index.html shows "opens after GIS Day" instead of a sign-in box.
+    // Share it with Everyone for Fallback A or after the event.
+    soloLayerUrl: "https://services2.arcgis.com/xLpB90lOmCXYDAWo/arcgis/rest/services/WV_GeoGuess_Landmarks_Solo/FeatureServer/0",
 
-    // The title of the layer (inside the web map above) that holds your
-    // landmarks. This layer is hidden during play — its features are the
-    // "answers". Each feature should be a polygon (the landmark's footprint).
-    // TODO(Phase 3): "WV_GeoGuess_Landmarks" (the public solo-mode view).
-    landmarkLayerTitle: "Dubai Landmarks",
+    // Upstream alternative, used only when soloLayerUrl is null: a web map
+    // item plus the title of the landmarks layer inside it.
+    webMapItemId: null,
+    landmarkLayerTitle: null,
 
     // Field names on the landmark layer.
     //   idField     — the unique ID field (used to fetch attachment photos).
@@ -61,17 +62,15 @@ window.ARCGIGUESS_CONFIG = {
     //                 null = use each feature's first attachment (upstream).
     //   promptField — clue shown during play instead of the name; the name is
     //                 then revealed with the result. null = show the name.
-    // TODO(Phase 3): "image_path" and "prompt_text" once the WV web map exists
-    // (docs/AGOL_SETUP.md §5). The Dubai placeholder has neither field.
     landmarkIdField: "OBJECTID",
     landmarkNameField: "name",
-    landmarkImageField: null,
-    landmarkPromptField: null,
+    landmarkImageField: "image_path",
+    landmarkPromptField: "prompt_text",
 
     // How many landmarks to play per game. Set to null to use every landmark
     // in the layer. If you have 40 landmarks and set this to 10, each game
     // picks 10 at random.
-    roundsPerGame: null,
+    roundsPerGame: 10,
 
     // Whether to randomize landmark order each game. Set to false to always
     // play them in the layer's natural order (handy for a guided/curated tour).
@@ -148,7 +147,9 @@ window.ARCGIGUESS_CONFIG = {
                 incorrectMessage:
                     "You were <strong>{distance} mi</strong> away. You earned <strong>+{roundScore} points</strong>. Here's the correct location.",
                 // Appended to the result when landmarkPromptField hides the name.
-                answerReveal: "<br>It was <strong>{name}</strong>.",
+                answerReveal: "<br>📍 <strong>{name}</strong>",
+                soloClosed:
+                    "Play at home opens after WVDOT GIS Day (November 13, 2026). Check back then!",
                 nextButton: "Next Location",
                 finishEarlyButton: "Finish early",
                 finishEarlyConfirm: "Tap again to end game",
@@ -193,12 +194,15 @@ window.ARCGIGUESS_CONFIG = {
         //          tabs in one browser. No ArcGIS Online layers needed.
         // "agol" — the real hosted layers below.
         // Override per page load with ?backend=mock|agol (and ?session=...).
-        backend: "mock",
+        // Event default is "agol"; for local two-tab development add ?backend=mock.
+        backend: "agol",
 
-        // Use test-* IDs during development. The agol adapter refuses to write
-        // any other session unless allowProductionWrites is true (brief §9).
-        defaultSessionId: "test-dev",
-        allowProductionWrites: false,
+        // The session phones join when the URL has no ?session= (the QR code
+        // always includes it). Rehearse with ?session=test-… instead.
+        defaultSessionId: "gisday2026",
+        // The host may write test-* sessions and ONLY these others (brief §9).
+        eventSessions: ["gisday2026"],
+        allowProductionWrites: false, // true = any session; leave false
 
         // Max length of reveal_json / leaderboard_json. Writes over this fail
         // loudly, in the mock too. 64000 round-tripped intact on the real
@@ -276,7 +280,7 @@ window.ARCGIGUESS_CONFIG = {
         title: "WV GeoGuess — How well do you know West Virginia?",
         description:
             "A quick geo-guessing game from WVDOT GIS Day: we show you a place in West Virginia, you pin it on the map.",
-        image: "https://sevin47.github.io/WV-GeoGuess/assets/screenshot.png",
+        image: "https://sevin47.github.io/WV-GeoGuess/assets/social.jpg",
         url: "https://sevin47.github.io/WV-GeoGuess/",
         twitterHandle: "",
     },

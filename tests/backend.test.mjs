@@ -210,6 +210,9 @@ test("agol host: updates by objectId with a token; refuses production sessions",
     assert.deepEqual(f.attributes, { ObjectId: 9, phase: "guessing", round_ends_at: 50, updated_at: 5 });
 
     await assert.rejects(host.updateState("gisday2026", { phase: "lobby" }), { code: "PRODUCTION_WRITE_BLOCKED" });
+    const event = createHostBackend({ ...AGOL, eventSessions: ["gisday2026"] }, { fetch: fn });
+    await event.updateState("gisday2026", { phase: "lobby" }); // the named event session is allowed
+    await assert.rejects(event.updateState("some-other", { phase: "lobby" }), { code: "PRODUCTION_WRITE_BLOCKED" });
     const allowed = createHostBackend({ ...AGOL, allowProductionWrites: true }, { fetch: fn });
     await allowed.updateState("gisday2026", { phase: "lobby" });
 });

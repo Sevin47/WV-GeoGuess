@@ -21,7 +21,7 @@
  * Scoring math lives in js/scoring.js; the pin and web map loading in js/map.js.
  * ========================================================================== */
 import { createScorer, formatMiles, pointsForMiles } from "./js/scoring.js";
-import { loadWebMap, makePinSymbol, animatePinDrop } from "./js/map.js";
+import { loadWebMap, setupWVMap, makePinSymbol, animatePinDrop } from "./js/map.js";
 import { siteUrl } from "./js/backend.js";
 
 $arcgis
@@ -205,8 +205,9 @@ $arcgis
             // Loading Panel
             $("loading-text").innerText = t("loadingText");
 
-            // Game Panel
+            // Game Panel (with a prompt field, the prompt already asks the question)
             $("find-landmark-text").innerText = t("findLandmarkText");
+            $("find-landmark-text").classList.toggle("hidden", !!CONFIG.landmarkPromptField);
             $("score-display").innerText = t("scoreDisplay", {
                 score: totalScore,
             });
@@ -361,12 +362,25 @@ $arcgis
          */
         async function init() {
             try {
-                // Load the web map (ArcGIS Online, or the Enterprise portal
-                // in CONFIG.portalUrl) so we can find the landmarks layer.
-                webmap = await loadWebMap(mapEl, CONFIG);
-                landmarksLayer = webmap.layers.find(
-                    (layer) => layer.title === CONFIG.landmarkLayerTitle
-                );
+                if (CONFIG.soloLayerUrl) {
+                    // WV GeoGuess: the same WV map as the live game, with the
+                    // answers read from the solo view of the Landmarks layer.
+                    if (!(await soloLayerIsOpen())) return showSoloClosed();
+                    await setupWVMap(mapEl, CONFIG.map);
+                    const [FeatureLayer] = await $arcgis.import([
+                        "@arcgis/core/layers/FeatureLayer.js",
+                    ]);
+                    landmarksLayer = new FeatureLayer({ url: CONFIG.soloLayerUrl });
+                    mapEl.map.add(landmarksLayer);
+                    await landmarksLayer.load();
+                } else {
+                    // Upstream: a web map (ArcGIS Online, or the Enterprise
+                    // portal in CONFIG.portalUrl) holding the landmarks layer.
+                    webmap = await loadWebMap(mapEl, CONFIG);
+                    landmarksLayer = webmap.layers.find(
+                        (layer) => layer.title === CONFIG.landmarkLayerTitle
+                    );
+                }
 
                 if (!landmarksLayer) {
                     console.error(
@@ -391,6 +405,30 @@ $arcgis
                 alert(t("webMapError"));
                 panels.loading.classList.remove("hidden");
             }
+        }
+
+        /**
+         * The solo view stays private until after the live event (it holds
+         * every answer). Check anonymously first: querying a private layer
+         * through the SDK would pop up an ArcGIS sign-in the public can't use.
+         */
+        async function soloLayerIsOpen() {
+            try {
+                const res = await fetch(
+                    `${CONFIG.soloLayerUrl}/query?where=1%3D1&returnCountOnly=true&f=json`
+                );
+                const json = await res.json();
+                return !json.error && json.count > 0;
+            } catch {
+                return false;
+            }
+        }
+
+        function showSoloClosed() {
+            gameState = "LOADING";
+            updateUI();
+            $("loading-text").innerText = t("soloClosed");
+            document.querySelector("#loading-panel .animate-spin")?.classList.add("hidden");
         }
 
         /**
