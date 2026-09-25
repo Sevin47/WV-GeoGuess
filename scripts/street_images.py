@@ -496,7 +496,8 @@ POI_WEIGHTS = [
 POI_SKIP_NAMES = re.compile(r"farm|cemetery|substation|water tower|fire (station|department)|tank", re.I)
 FACING_MAX_DEG = 30  # the photo's camera heading must point within this of the landmark
 FACING_DIST_M = (15, 200)  # ...from this far away
-MAPILLARY_FIELDS = "id,thumb_2048_url,computed_geometry,geometry,captured_at,is_pano,creator,compass_angle,computed_compass_angle"
+MAPILLARY_FIELDS = ("id,thumb_2048_url,thumb_original_url,computed_geometry,geometry,captured_at,"
+                    "is_pano,creator,compass_angle,computed_compass_angle")
 
 
 def _poi_kind(tags):
@@ -559,14 +560,48 @@ def wikipedia_blurb(tag):
     return (first[:237] + "...") if len(first) > 240 else (first or None)
 
 
-def mapillary_to_candidate(img, wv, *, label=None, fact=None, extra=None, credit_suffix=""):
+def pano_view(pano, x, y=0.5, fov_deg=90, out_w=1600, out_h=900):
+    """A flat 16:9 photo from an equirectangular 360° panorama, looking at the
+    spot (x, y) — both 0..1 across the panorama image, exactly what Mapillary
+    puts in its URLs as x= and y= when you're viewing a panorama."""
+    import numpy as np
+
+    src = np.asarray(pano.convert("RGB"), dtype=np.float32)
+    H, W = src.shape[:2]
+    yaw = (x - 0.5) * 2 * math.pi
+    pitch = (0.5 - y) * math.pi
+    f = (out_w / 2) / math.tan(math.radians(fov_deg) / 2)
+    X, Y = np.meshgrid(np.arange(out_w) - out_w / 2 + 0.5, np.arange(out_h) - out_h / 2 + 0.5)
+    Z = np.full_like(X, f)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    Y2, Z2 = Y * cp - Z * sp, Y * sp + Z * cp  # tilt up/down
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    X3, Z3 = X * cy + Z2 * sy, -X * sy + Z2 * cy  # turn left/right
+    lon = np.arctan2(X3, Z3)
+    lat = np.arctan2(-Y2, np.hypot(X3, Z3))
+    u = (lon / (2 * math.pi) + 0.5) * W - 0.5
+    v = (0.5 - lat / math.pi) * H - 0.5
+    # bilinear sampling; wrap around horizontally, clamp vertically
+    u0, v0 = np.floor(u).astype(int), np.floor(v).astype(int)
+    du, dv = (u - u0)[..., None], (v - v0)[..., None]
+    u0w, u1w = u0 % W, (u0 + 1) % W
+    v0c, v1c = np.clip(v0, 0, H - 1), np.clip(v0 + 1, 0, H - 1)
+    out = (src[v0c, u0w] * (1 - du) * (1 - dv) + src[v0c, u1w] * du * (1 - dv)
+           + src[v1c, u0w] * (1 - du) * dv + src[v1c, u1w] * du * dv)
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
+
+
+def mapillary_to_candidate(img, wv, *, label=None, fact=None, extra=None, credit_suffix="", pil=None):
     """Download a Mapillary image record and turn it into a candidate (no spacing checks)."""
     geom = img.get("computed_geometry") or img.get("geometry")
     ilon, ilat = geom["coordinates"]
     if not wv.contains(ilon, ilat):
         return None, "outside WV"
-    raw = http_get(img["thumb_2048_url"])  # thumbnail URLs expire: download now
-    im = Image.open(io.BytesIO(raw)).convert("RGB")
+    if pil is not None:
+        im = pil.convert("RGB")
+    else:
+        raw = http_get(img["thumb_2048_url"])  # thumbnail URLs expire: download now
+        im = Image.open(io.BytesIO(raw)).convert("RGB")
     brightness = ImageStat.Stat(ImageOps.grayscale(im)).mean[0]
     cid = f"m_{img['id']}"
     im.save(CANDIDATES_DIR / f"{cid}.jpg", quality=92)
@@ -647,7 +682,20 @@ def cmd_add(args):
     token = os.environ.get("MAPILLARY_TOKEN") or sys.exit("Set MAPILLARY_TOKEN (env var or .env)")
     CANDIDATES_DIR.mkdir(parents=True, exist_ok=True)
     text = " ".join(args.ids) + (" " + Path(args.file).read_text() if args.file else "")
-    ids = list(dict.fromkeys(re.findall(r"(?:pKey=|/|^|\s)(\d{6,})", text)))
+    views = {}  # image id -> (x, y) the viewer was looking at, from a URL's x= / y=
+    ids = []
+    for item in text.split():
+        if "pKey=" in item:
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(item).query)
+            mid = q["pKey"][0]
+            if "x" in q:
+                views[mid] = (float(q["x"][0]), float(q.get("y", ["0.5"])[0]))
+        elif re.fullmatch(r"\d{6,}", item):
+            mid = item
+        else:
+            continue
+        if mid not in ids:
+            ids.append(mid)
     if not ids:
         sys.exit("No Mapillary image IDs found. Paste IDs or URLs like https://www.mapillary.com/app/?pKey=123456789")
     wv = WV()
@@ -660,10 +708,17 @@ def cmd_add(args):
         except Exception as e:  # noqa: BLE001
             print(f"FAIL {mid}: {e}")
             continue
-        if img.get("is_pano") and not args.allow_pano:
-            print(f"skip {mid}: 360-degree panorama (looks warped as a flat photo; --allow-pano to force)")
-            continue
-        cand, why = mapillary_to_candidate(img, wv, extra={"handpicked": True})
+        pil = None
+        if img.get("is_pano"):
+            if mid not in views and not args.allow_pano:
+                print(f"skip {mid}: 360-degree panorama. Paste the full mapillary.com URL (it records "
+                      "where you were looking, x=/y=) to get a flat view, or --allow-pano to use it warped.")
+                continue
+            if mid in views:
+                pano = Image.open(io.BytesIO(http_get(img.get("thumb_original_url") or img["thumb_2048_url"])))
+                pil = pano_view(pano, *views[mid])
+                print(f"  panorama {mid}: rendered a flat view at x={views[mid][0]:.3f}, y={views[mid][1]:.3f}")
+        cand, why = mapillary_to_candidate(img, wv, extra={"handpicked": True}, pil=pil)
         if not cand:
             print(f"skip {mid}: {why}")
             continue
