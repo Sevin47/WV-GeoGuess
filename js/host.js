@@ -598,6 +598,18 @@ async function start() {
         // round_order are played live; the rest are the solo-mode pool.
         const all = await backend.getLandmarks();
         rounds = all.filter((r) => r.roundOrder >= 1);
+        // round_order is the round number for the whole day (1, 2, 3 … continuing
+        // across breaks); set_name groups them into breaks. A repeat would make
+        // two landmarks share a round number.
+        const seen = new Map();
+        for (const r of rounds) seen.set(r.roundOrder, [...(seen.get(r.roundOrder) || []), r.landmarkId]);
+        const dupes = [...seen].filter(([, ids]) => ids.length > 1);
+        if (dupes.length) {
+            throw new Error(
+                `round_order must count up across the whole day (1, 2, 3 … continuing into the next break). ` +
+                    `Used more than once: ${dupes.map(([n, ids]) => `${n} (${ids.join(", ")})`).join("; ")}`
+            );
+        }
         if (!rounds.length) {
             throw new Error(
                 all.length
