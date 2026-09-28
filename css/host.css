@@ -59,6 +59,8 @@ body:not([data-screen="reveal"]) #map { visibility: hidden; }
 .lobby { align-items: center; justify-content: space-around; padding: 4vw; }
 .lobby-text { display: flex; flex-direction: column; gap: 2.5vh; max-width: 48vw; }
 .lobby h1 { font-size: 6vw; }
+.players { font-size: 2vw; margin: 0; }
+.players strong { font-size: 3.4vw; color: var(--gold); }
 .join-url { font-size: 2.6vw; font-weight: 800; color: var(--gold); word-break: break-all; margin: 0; }
 .qr { background: #fff; border-radius: 1vw; padding: 1.5vw; }
 .qr svg { display: block; width: 100%; height: 100%; }

@@ -53,6 +53,7 @@ const store = {
 };
 const KEY_PLAYER = "wvgg.player";
 const keyGuess = (round) => `wvgg.guess.${sid}.${round}`;
+const keyJoined = `wvgg.joined.${sid}`;
 const guessMemory = new Map();
 
 function myGuess(round) {
@@ -406,6 +407,26 @@ function onNewRound() {
 
 // --- Actions -------------------------------------------------------------------------
 
+// Tell the host this device joined, so the lobby can show a player count
+// before anyone guesses. Once per session per day (the host only counts
+// recent rows, see PLAYER_WINDOW_MS in host.js). Retried on the next state
+// poll if it fails; it never blocks playing.
+const REANNOUNCE_MS = 6 * 60 * 60 * 1000;
+let announcing = false;
+async function announceJoin() {
+    const last = store.get(keyJoined);
+    if (!player || announcing || (typeof last === "number" && Date.now() - last < REANNOUNCE_MS)) return;
+    announcing = true;
+    try {
+        await backend.announceJoin({ sessionId: sid, playerId: player.id, nickname: player.name });
+        store.set(keyJoined, Date.now());
+    } catch (err) {
+        console.warn("Join announce failed", err);
+    } finally {
+        announcing = false;
+    }
+}
+
 $("join-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const check = validateNickname($("nickname").value);
@@ -416,6 +437,7 @@ $("join-form").addEventListener("submit", (e) => {
     editingName = false;
     $("nickname").blur();
     render();
+    announceJoin();
 });
 
 $("change-name").addEventListener("click", () => {
@@ -473,6 +495,7 @@ watchState(
             onNewRound();
         }
         render();
+        announceJoin();
     },
     {
         intervals: CONFIG.live.polling,

@@ -90,6 +90,26 @@ test("mock: players can submit but not read guesses; host sees them in arrival o
     }
 });
 
+test("mock: countPlayers counts distinct devices that joined or guessed, recent rows only", async () => {
+    let t = 1000;
+    const { host, player, close } = mockPair({ now: () => t });
+    try {
+        await player.announceJoin({ sessionId: "test-a", playerId: "old", nickname: "Old" });
+        t = 10_000;
+        await player.announceJoin({ sessionId: "test-a", playerId: "p1", nickname: "Ann" });
+        await player.announceJoin({ sessionId: "test-a", playerId: "p2", nickname: "Bo" });
+        await player.submitGuess({ sessionId: "test-a", roundNum: 1, playerId: "p1", nickname: "Ann", lon: -81, lat: 38 });
+        await player.submitGuess({ sessionId: "test-a", roundNum: 1, playerId: "p3", nickname: "Cy", lon: -81, lat: 38 });
+        await player.announceJoin({ sessionId: "test-b", playerId: "p9", nickname: "Elsewhere" });
+        assert.equal(await host.countPlayers("test-a"), 4);
+        assert.equal(await host.countPlayers("test-a", { since: 5000 }), 3);
+        // Join rows are round 0: they never show up as guesses in a real round.
+        assert.equal(await host.countGuesses("test-a", 1), 2);
+    } finally {
+        close();
+    }
+});
+
 test("mock: landmarks come back sorted with clockwise Esri rings", async () => {
     const { host, close } = mockPair();
     try {

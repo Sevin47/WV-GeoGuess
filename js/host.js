@@ -79,6 +79,7 @@ let rounds = []; // landmarks (the answers), sorted by round order
 let busy = false; // one action at a time (clickers double-fire)
 let jumpTo = null; // admin override for the next round
 let guessCount = 0;
+let playerCount = null; // devices that joined or guessed today; null until known
 let mapApi = null;
 let revealToken = 0; // cancels a running reveal animation
 let scorer = null;
@@ -229,6 +230,21 @@ setInterval(async () => {
     }
 }, 2000);
 
+// "N players joined": phones post a join row (js/play.js announceJoin). Only
+// rows from the last PLAYER_WINDOW_MS count, so earlier rehearsals of the
+// same session don't inflate it. Phones re-announce every 6 h, well inside it.
+const PLAYER_WINDOW_MS = 16 * 60 * 60 * 1000;
+async function refreshPlayerCount() {
+    if (!state || !["lobby", "guessing", "locked"].includes(state.phase)) return;
+    try {
+        playerCount = await backend.countPlayers(sid, { since: Date.now() - PLAYER_WINDOW_MS });
+        renderPlayerCount();
+    } catch (err) {
+        console.warn("Player count failed", err);
+    }
+}
+setInterval(refreshPlayerCount, 5000);
+
 // --- Rendering ---------------------------------------------------------------------------------
 
 const SCREEN_FOR_PHASE = {
@@ -289,6 +305,17 @@ function renderLobby() {
     $("lobby-sub").textContent = upcoming
         ? `${upcoming.setName ? `${upcoming.setName} — ` : ""}round ${upcoming.roundOrder} of ${rounds.length} is up next.`
         : "Drop a pin where you think each photo was taken.";
+    renderPlayerCount();
+}
+
+function renderPlayerCount() {
+    const el = $("lobby-players");
+    el.hidden = playerCount == null;
+    if (playerCount != null) {
+        $("lobby-player-count").textContent = playerCount.toLocaleString();
+        $("lobby-player-label").textContent = playerCount === 1 ? "player joined" : "players joined";
+    }
+    $("guess-count-of").textContent = playerCount ? ` of ${playerCount.toLocaleString()}` : "";
 }
 
 function renderRound() {
@@ -305,7 +332,8 @@ function renderRound() {
 
 function renderRoundCount() {
     $("guess-count").textContent = guessCount.toLocaleString();
-    $("guess-count-label").textContent = guessCount === 1 ? "guess in" : "guesses in";
+    $("guess-count-label").textContent = guessCount === 1 && !playerCount ? "guess in" : "guesses in";
+    renderPlayerCount();
 }
 
 function renderReveal() {

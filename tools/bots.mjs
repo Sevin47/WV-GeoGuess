@@ -147,6 +147,13 @@ async function runBot(n) {
     let guessedRound = null;
     let phase = null;
 
+    // Like a phone after the join screen (js/play.js announceJoin).
+    try {
+        await backend.announceJoin({ sessionId: SESSION, playerId, nickname });
+    } catch (err) {
+        recordError(err);
+    }
+
     while (!stopping) {
         const t0 = performance.now();
         let state = null;

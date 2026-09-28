@@ -38,6 +38,7 @@
                 <h1 id="lobby-title">Scan to play!</h1>
                 <p id="lobby-sub" class="lead">Drop a pin where you think each photo was taken.</p>
                 <p class="join-url" id="lobby-url"></p>
+                <p class="players" id="lobby-players" hidden><strong id="lobby-player-count">0</strong> <span id="lobby-player-label">players joined</span></p>
                 <p class="muted">No app, no sign-up — just your name.</p>
             </div>
             <div class="qr big" id="lobby-qr" aria-label="QR code to join"></div>
@@ -53,7 +54,7 @@
                 <div id="round-prompt" class="round-prompt"></div>
                 <div id="timer" class="timer" aria-live="off"></div>
                 <div id="timer-note" class="timer-note"></div>
-                <div class="guess-count"><strong id="guess-count">0</strong> <span id="guess-count-label">guesses in</span></div>
+                <div class="guess-count"><strong id="guess-count">0</strong><span id="guess-count-of"></span> <span id="guess-count-label">guesses in</span></div>
                 <div class="join-mini">
                     <div class="qr small" id="round-qr"></div>
                     <div class="join-mini-url" id="round-url"></div>

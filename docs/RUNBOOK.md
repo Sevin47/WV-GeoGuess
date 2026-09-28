@@ -46,7 +46,9 @@
 - [ ] **Code freeze Nov 9.** No pushes after that. A change can take ~10 minutes to reach phones that
   already loaded the page.
 - [ ] **Day before:** open the State table's Data tab and delete any `gisday2026` row left over from
-  testing, so the day starts at round 1 with an empty leaderboard. Deleting `test-…` rows is optional.
+  testing, so the day starts at round 1 with an empty leaderboard. Also delete any `gisday2026` rows
+  in the Guesses table: old guesses in a round number would still be scored. Deleting `test-…` rows
+  is optional.
 - [ ] (Optional) Re-run the load test with `node tools/bots.mjs --session test-load-N`, driving the
   host on the same session.
 
@@ -83,7 +85,7 @@
 |---|---|
 | Host page crashed or was refreshed | Reopen the same host URL. It resumes where it was: round, lock time, and totals are stored in AGOL. The sign-in is remembered in that tab. |
 | Phones stuck or "Connection trouble" | Tell people to refresh. They rejoin automatically with the same name and score. |
-| Few guesses coming in | Put the lobby QR back up (Admin → Show lobby). Late joiners are fine. |
+| Few guesses coming in | Put the lobby QR back up (Admin → Show lobby). Late joiners are fine. The lobby shows "N players joined" and rounds show "guesses in of N", counting phones that joined today. |
 | Rude nickname | Admin → Hide. |
 | **AGOL or network down (Fallback B)** | Show the round photos (`assets/rounds/rNNN.jpg`) full screen, let the room shout out answers, and read them from the printed answer key. |
 | Live mode unusable but the internet works (Fallback A) | Solo mode (`index.html`) on the projector. It only opens once `WV_GeoGuess_Landmarks_Solo` is shared with Everyone, which **makes every answer public**, so use it only as a last resort. |
@@ -93,6 +95,7 @@
 - [ ] **Open play-at-home:** share `WV_GeoGuess_Landmarks_Solo` with **Everyone**. The site's solo
   page and the phones' "Play more at home" button start working immediately.
 - [ ] **Close live guessing:** on `WV_GeoGuess_Guesses_Public`, turn off editing or unshare it.
-- [ ] **Export `WV_GeoGuess_Guesses`** (session `gisday2026`) for a "where everyone guessed" map. It
-  makes good post-event GIS Day content (brief §7).
+- [ ] **Export `WV_GeoGuess_Guesses`** (session `gisday2026`, `round_num > 0`) for a "where everyone
+  guessed" map. It makes good post-event GIS Day content (brief §7). Rows with `round_num = 0` and
+  no location are "joined" markers behind the lobby's player count.
 - [ ] (Optional) Delete `test-…` rows from the State and Guesses tables.

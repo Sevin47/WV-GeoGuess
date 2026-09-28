@@ -9,9 +9,9 @@
  * The interface is split by ROLE, mirroring the AGOL permissions, so play.html
  * can't accidentally depend on something players won't be allowed to do:
  *
- *   Player (public views):  getState, submitGuess, onHint, close
+ *   Player (public views):  getState, submitGuess, announceJoin, onHint, close
  *   Host   (owner):         getState, createSession, updateState,
- *                           listGuesses, countGuesses, getLandmarks,
+ *                           listGuesses, countGuesses, countPlayers, getLandmarks,
  *                           onHint, close
  *
  * Everything that crosses the interface is a plain JS object in camelCase;
@@ -57,7 +57,11 @@ export const LANDMARK_FIELDS = {
     credit: "credit",
 };
 
-export const PHASES = ["lobby", "guessing", "locked", "reveal", "leaderboard", "final"];
+// Guess rows with this round number are "joined" markers (no geometry), so
+// the host can count players before anyone guesses. Real rounds start at 1.
+export const JOIN_ROUND = 0;
+
+export const PHASES =["lobby", "guessing", "locked", "reveal", "leaderboard", "final"];
 export const NICKNAME_MAX = 24; // matches the guesses layer's nickname field length
 
 /**
@@ -312,31 +316,34 @@ function createMockBackend(role, live, deps) {
     };
 
     if (role === "player") {
+        async function addRecord({ sessionId, roundNum, playerId, nickname, lon = null, lat = null }) {
+            assertSessionId(sessionId);
+            assertRoundNum(roundNum);
+            await delay();
+            // Server time is taken on arrival, like CreationDate.
+            const objectId = Math.floor(Math.random() * 2 ** 31);
+            const record = {
+                objectId,
+                attributes: {
+                    session_id: sessionId,
+                    round_num: roundNum,
+                    player_id: playerId,
+                    nickname: cleanNickname(nickname),
+                    client_ts: now(),
+                    CreationDate: now(),
+                },
+                lon,
+                lat,
+            };
+            storage.setItem(guessPrefix(sessionId, roundNum) + objectId, JSON.stringify(record));
+            hint(sessionId, "guess");
+            return { objectId };
+        }
         return {
             ...common,
-            async submitGuess({ sessionId, roundNum, playerId, nickname, lon, lat }) {
-                assertSessionId(sessionId);
-                assertRoundNum(roundNum);
-                await delay();
-                // Server time is taken on arrival, like CreationDate.
-                const objectId = Math.floor(Math.random() * 2 ** 31);
-                const record = {
-                    objectId,
-                    attributes: {
-                        session_id: sessionId,
-                        round_num: roundNum,
-                        player_id: playerId,
-                        nickname: cleanNickname(nickname),
-                        client_ts: now(),
-                        CreationDate: now(),
-                    },
-                    lon,
-                    lat,
-                };
-                storage.setItem(guessPrefix(sessionId, roundNum) + objectId, JSON.stringify(record));
-                hint(sessionId, "guess");
-                return { objectId };
-            },
+            submitGuess: addRecord,
+            announceJoin: ({ sessionId, playerId, nickname }) =>
+                addRecord({ sessionId, roundNum: JOIN_ROUND, playerId, nickname }),
         };
     }
 
@@ -389,6 +396,16 @@ function createMockBackend(role, live, deps) {
             assertRoundNum(roundNum);
             await delay();
             return guessKeys(guessPrefix(sessionId, roundNum)).length;
+        },
+
+        async countPlayers(sessionId, { since = 0 } = {}) {
+            assertSessionId(sessionId);
+            await delay();
+            const ids = guessKeys(`${MOCK_PREFIX}guess.${sessionId}.`)
+                .map((k) => JSON.parse(storage.getItem(k)).attributes)
+                .filter((a) => a.client_ts >= since)
+                .map((a) => a.player_id);
+            return new Set(ids).size;
         },
 
         async getLandmarks() {
@@ -555,6 +572,22 @@ function createAgolBackend(role, live, deps) {
                 ]);
                 return { objectId: result.objectId };
             },
+            async announceJoin({ sessionId, playerId, nickname }) {
+                assertSessionId(sessionId);
+                // No geometry: a join isn't a guess, and round 0 never scores.
+                const result = await edit(agol.guessesPublicUrl, "addFeatures", [
+                    {
+                        attributes: {
+                            session_id: sessionId,
+                            round_num: JOIN_ROUND,
+                            player_id: playerId,
+                            nickname: cleanNickname(nickname),
+                            client_ts: now(),
+                        },
+                    },
+                ]);
+                return { objectId: result.objectId };
+            },
         };
     }
 
@@ -626,6 +659,27 @@ function createAgolBackend(role, live, deps) {
 
         async countGuesses(sessionId, roundNum) {
             const json = await queryGuesses(sessionId, roundNum, { returnCountOnly: true });
+            return json.count;
+        },
+
+        async countPlayers(sessionId, { since = 0 } = {}) {
+            assertSessionId(sessionId);
+            // Distinct devices that joined or guessed since `since` (ms, by the
+            // phone's clock, which is plenty for an hours-wide window), so rows
+            // left from earlier rehearsals of the same session don't count.
+            // The layer supports count-distinct
+            // (advancedQueryCapabilities.supportsCountDistinct).
+            const json = await request(
+                `${agol.guessesUrl}/query`,
+                {
+                    where: `${GUESS_FIELDS.sessionId} = '${sessionId}' AND ${GUESS_FIELDS.clientTs} >= ${Math.floor(since)}`,
+                    outFields: GUESS_FIELDS.playerId,
+                    returnDistinctValues: true,
+                    returnCountOnly: true,
+                    returnGeometry: false,
+                },
+                { method: "POST", auth: true }
+            );
             return json.count;
         },
 
