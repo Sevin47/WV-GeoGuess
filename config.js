@@ -131,16 +131,16 @@ window.ARCGIGUESS_CONFIG = {
                 // Scoring explanation templates, one per mode.
                 // exponential placeholders: {points} {p10} {p25} {p50}
                 scoringSummaryExponential:
-                    "- Pin it inside the spot: <strong>{points} points</strong><br>- Miss, and points shrink with distance: 10&nbsp;mi&nbsp;≈&nbsp;{p10}, 25&nbsp;mi&nbsp;≈&nbsp;{p25}, 50&nbsp;mi&nbsp;≈&nbsp;{p50}",
+                    "- Pin it inside the target area: <strong>{points} points</strong><br>- Miss, and points shrink with distance: 10&nbsp;mi&nbsp;≈&nbsp;{p10}, 25&nbsp;mi&nbsp;≈&nbsp;{p25}, 50&nbsp;mi&nbsp;≈&nbsp;{p50}",
                 // bands placeholders: {points} {band} {penalty} {min}
                 scoringSummaryBands:
                     "- Pin it (or within {band}&nbsp;mi): <strong>{points} points</strong><br>- Then <strong>−{penalty}</strong> for every {band}&nbsp;mi you're off, down to {min}.",
-                startButton: "Start Game",
+                startButton: "Start game",
                 loadingText: "Loading...",
                 findLandmarkText: "Where in West Virginia is this?",
                 scoreDisplay: "Score: {score}",
                 roundDisplay: "Round {current} / {total}",
-                confirmButton: "Confirm Guess",
+                confirmButton: "Confirm guess",
                 correctTitle: "Nailed it!",
                 correctMessage:
                     "Right on target. You earned <strong>+{roundScore} points</strong>.",
@@ -151,33 +151,33 @@ window.ARCGIGUESS_CONFIG = {
                 answerReveal: "<br>📍 <strong>{name}</strong>",
                 soloClosed:
                     "Play at home opens after WVDOT GIS Day (November 13, 2026). Check back then!",
-                nextButton: "Next Location",
+                nextButton: "Next location",
                 finishEarlyButton: "Finish early",
                 finishEarlyConfirm: "Tap again to end game",
-                gameOverButton: "Show Results",
-                gameOverTitle: "Game Over!",
+                gameOverButton: "Show results",
+                gameOverTitle: "Game over!",
                 finalScoreText: "Here are your results:",
-                totalScoreLabel: "Total Score",
+                totalScoreLabel: "Total score",
                 accuracyLabel: "Accuracy",
-                foundLabel: "Places Found",
-                playAgainButton: "Play Again",
-                shareButton: "Share Results",
+                foundLabel: "Places found",
+                playAgainButton: "Play again",
+                shareButton: "Share results",
                 // {score}, {appName}, and {url} (from social.url) are available.
                 shareText:
                     "I scored {score} points in {appName}! How well do you know West Virginia? Play at {url}",
-                shareCardTitle: "My {appName} Score!",
-                shareCardScoreLabel: "Total Score",
+                shareCardTitle: "My {appName} score!",
+                shareCardScoreLabel: "Total score",
                 shareCardAccuracyLabel: "Accuracy",
-                shareModalTitle: "Share Your Results!",
+                shareModalTitle: "Share your results!",
                 shareModalDesc:
                     "Right-click or long-press the image to save and share it.",
                 webMapError: "Could not load the web map. Please check the ID.",
                 layerError:
                     "Could not find the landmark layer in the web map. Check the layer title in config.js.",
-                submitScoreButton: "Submit Score",
+                submitScoreButton: "Submit score",
                 viewLeaderboardButton: "Leaderboard",
-                submitModalTitle: "Submit Your Score",
-                leaderboardModalTitle: "Top Scorers",
+                submitModalTitle: "Submit your score",
+                leaderboardModalTitle: "Top scorers",
                 leaderboardLoadingText: "Loading leaderboard...",
                 leaderboardError:
                     "Could not load leaderboard data. Please try again later.",
@@ -279,7 +279,7 @@ window.ARCGIGUESS_CONFIG = {
     // agency server). These assume GitHub Pages on the Sevin47/WV-GeoGuess
     // fork; update url/image if that changes, and replace the screenshot.
     social: {
-        title: "WV GeoGuess — How well do you know West Virginia?",
+        title: "WV GeoGuess: How well do you know West Virginia?",
         description:
             "A quick geo-guessing game from WVDOT GIS Day: we show you a place in West Virginia, you pin it on the map.",
         image: "https://sevin47.github.io/WV-GeoGuess/assets/social.jpg",

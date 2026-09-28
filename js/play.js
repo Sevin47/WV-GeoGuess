@@ -167,9 +167,9 @@ function renderRound() {
                 : "Loading map…";
         status.textContent = sendError || (secondsLeft() === 0 ? "Time's up! Locking…" : "");
     } else if (screen === "locked") {
-        status.textContent = "✓ Locked in — watch the big screen for the answer";
+        status.textContent = "✓ Locked in. Watch the big screen for the answer.";
     } else if (screen === "timesup") {
-        status.textContent = "⏱ Time's up — no guess this round";
+        status.textContent = "⏱ Time's up. You didn't guess this round.";
     } else if (screen === "result") {
         status.textContent = "";
         renderResult(result);
@@ -196,7 +196,7 @@ function renderResult(el) {
             .join(" · ");
     } else if (guessed) {
         headline = "Your guess didn't count";
-        line = "It reached the game after the round locked.";
+        line = "It arrived after the round locked.";
     } else {
         headline = "No guess this round";
         line = overall ? `#${overall} overall` : "";
@@ -217,7 +217,7 @@ function renderStandings() {
         : "Standings";
     const me = myStanding();
     if (me) setStanding($("standings-me"), me, "You're ");
-    else $("standings-me").textContent = "You haven't scored yet — jump in next round!";
+    else $("standings-me").textContent = "You haven't scored yet. Jump in next round!";
     fillTopList($("standings-top"), board, 5);
 }
 

@@ -144,7 +144,7 @@ async function reveal() {
     if (state.phase !== "locked" && state.phase !== "reveal") return;
     const lm = roundByNum(state.roundNum);
     if (!lm) throw new Error(`No landmark for round ${state.roundNum}`);
-    if (!scorer) throw new Error("the map is still loading — try again in a moment");
+    if (!scorer) throw new Error("the map is still loading. Try again in a moment.");
 
     const guesses = await backend.listGuesses(sid, state.roundNum);
     let { reveal: rv, leaderboard } = state;
@@ -310,7 +310,7 @@ function renderLobby() {
     const upcoming = nextRound();
     $("lobby-title").textContent = played ? "Join in anytime!" : "Scan to play!";
     $("lobby-sub").textContent = upcoming
-        ? `${upcoming.setName ? `${upcoming.setName} — ` : ""}round ${upcoming.roundOrder} of ${rounds.length} is up next.`
+        ? `${upcoming.setName ? `${upcoming.setName}: r` : "R"}ound ${upcoming.roundOrder} of ${rounds.length} is up next.`
         : "Drop a pin where you think each photo was taken.";
     renderPlayerCount();
 }
@@ -373,7 +373,7 @@ function renderBoard(ol, n) {
 
 function renderFinal() {
     const champ = state.leaderboard?.rows?.[0];
-    $("final-champion").textContent = champ ? `${champ[1]} · ${champ[2].toLocaleString()} pts` : "—";
+    $("final-champion").textContent = champ ? `${champ[1]} · ${champ[2].toLocaleString()} pts` : "No scores yet";
     renderBoard($("final-list"), 10);
 }
 
@@ -683,7 +683,7 @@ async function start() {
     }
 }
 
-$("setup-detail").textContent = `Session “${sid}” · ${isAgol ? "ArcGIS Online" : "mock backend (this browser only)"}`;
+$("setup-detail").textContent = `Session "${sid}" · ${isAgol ? "ArcGIS Online" : "mock backend (this browser only)"}`;
 $("start").textContent = isAgol ? "Sign in & start" : "Start";
 $("start").addEventListener("click", start);
 
