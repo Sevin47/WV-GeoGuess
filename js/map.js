@@ -15,13 +15,25 @@ import { siteUrl } from "./backend.js";
 // WGS84 bounding box of West Virginia (from data/wv-boundary.geojson).
 export const WV_BBOX = { xmin: -82.645, ymin: 37.201, xmax: -77.719, ymax: 40.639 };
 
-// Keyless raster basemaps with no labels (labels would give answers away).
-// All verified to load anonymously on 2026-09-24.
+// Keyless basemaps with no labels (labels would give answers away). A string
+// is a raster tile service; { style } is an Esri vector style whose label,
+// road-shield, and icon layers (every "symbol" layer) are removed at load.
+// All verified to load anonymously (rasters 2026-09-24, vectors 2026-09-28).
+const VECTOR_STYLE = (id) => `https://www.arcgis.com/sharing/rest/content/items/${id}/resources/styles/root.json`;
 export const BASEMAPS = {
+    streets: { style: VECTOR_STYLE("de26a3cf4cc9451298ea173c4b324736") }, // World Street Map
+    topo: { style: VECTOR_STYLE("7dc6cea0b1764a1f9af2e679f642f0f5") }, // World Topographic Map
     hillshade: "https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer",
     lightgray: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Base/MapServer",
     imagery: "https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer",
 };
+
+/** Fetch an Esri vector style and drop its text/icon layers (no place names). */
+async function noLabelStyle(url) {
+    const style = await (await fetch(url)).json();
+    style.layers = style.layers.filter((l) => l.type !== "symbol");
+    return style;
+}
 
 /**
  * Resolve once the SDK's global $arcgis exists. Lets a page run its own UI
@@ -110,7 +122,7 @@ export async function loadWebMap(mapEl, { portalUrl, webMapItemId }) {
 
 /**
  * Build the WV map for play.html / host.html.
- *   basemap      "hillshade" | "lightgray" | "imagery"
+ *   basemap      "streets" | "topo" | "hillshade" | "lightgray" | "imagery"
  *   boundaryUrl  GeoJSON of the state outline (site-relative)
  *   countiesUrl  GeoJSON of county lines, or null to skip
  *   dimOutside   fade everything outside WV
@@ -118,17 +130,18 @@ export async function loadWebMap(mapEl, { portalUrl, webMapItemId }) {
  */
 export async function setupWVMap(mapEl, opts = {}) {
     const {
-        basemap = "hillshade",
+        basemap = "streets",
         boundaryUrl = "data/wv-boundary.geojson",
         countiesUrl = "data/wv-counties.geojson",
         dimOutside = true,
         constrain = true,
     } = opts;
 
-    const [Map, Basemap, TileLayer, GeoJSONLayer, GraphicsLayer, Graphic] = await $arcgis.import([
+    const [Map, Basemap, TileLayer, VectorTileLayer, GeoJSONLayer, GraphicsLayer, Graphic] = await $arcgis.import([
         "@arcgis/core/Map.js",
         "@arcgis/core/Basemap.js",
         "@arcgis/core/layers/TileLayer.js",
+        "@arcgis/core/layers/VectorTileLayer.js",
         "@arcgis/core/layers/GeoJSONLayer.js",
         "@arcgis/core/layers/GraphicsLayer.js",
         "@arcgis/core/Graphic.js",
@@ -182,10 +195,15 @@ export async function setupWVMap(mapEl, opts = {}) {
     });
     layers.push(boundaryLayer);
 
+    // ?basemap=topo etc. overrides the config, for comparing styles.
+    const pick = new URLSearchParams(location.search).get("basemap") || basemap;
+    const base = BASEMAPS[pick] || BASEMAPS.streets;
+    const baseLayer = base.style
+        ? new VectorTileLayer({ style: await noLabelStyle(base.style) })
+        : new TileLayer({ url: base });
+
     const map = new Map({
-        basemap: new Basemap({
-            baseLayers: [new TileLayer({ url: BASEMAPS[basemap] || BASEMAPS.hillshade })],
-        }),
+        basemap: new Basemap({ baseLayers: [baseLayer] }),
         layers,
     });
 

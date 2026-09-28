@@ -259,7 +259,8 @@ window.ARCGIGUESS_CONFIG = {
      * 6. MAP (play.html / host.html) — see js/map.js
      * ---------------------------------------------------------------------- */
     map: {
-        basemap: "hillshade", // "hillshade" | "lightgray" | "imagery" (no labels)
+        // All without place names: "streets" | "topo" | "hillshade" | "lightgray" | "imagery"
+        basemap: "streets",
         boundaryUrl: "data/wv-boundary.geojson", // Census TIGERweb 2020, generalized
         countiesUrl: "data/wv-counties.geojson", // null to hide county lines
         dimOutside: true,
