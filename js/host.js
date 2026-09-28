@@ -489,7 +489,11 @@ async function animateReveal(lm, guesses) {
                 geometry: { type: "point", longitude: g.lon, latitude: g.lat },
                 symbol: {
                     type: "text",
-                    text: `${i + 1}. ${name} · ${formatMiles(miles)} mi${points === MAX_POINTS ? " 🎯" : ""}`,
+                    // No emoji in map text: the SDK has no emoji glyphs, and one
+                    // such label silently blanks every graphic added with it.
+                    // Names are validated on the phone, but the guesses view
+                    // is public, so keep only the characters names.js allows.
+                    text: `${i + 1}. ${name.replace(/[^\p{L}\p{N} .'_-]/gu, "")} · ${formatMiles(miles)} mi${points === MAX_POINTS ? " · bullseye!" : ""}`,
                     color: "#0f172a",
                     haloColor: "#ffffff",
                     haloSize: 2.5,
