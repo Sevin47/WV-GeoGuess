@@ -20,6 +20,22 @@ export function metersToMiles(meters) {
     return meters / METERS_PER_MILE;
 }
 
+/**
+ * Great-circle (haversine) miles between two { lon, lat } points. Used for the
+ * distance players SEE and for tie-breaks: from the guess to the photo spot.
+ * Points still come from the SDK's geodesic distance to the zone's edge
+ * (createScorer). A sphere is within ~0.5% of the ellipsoid, i.e. feet at
+ * the distances where ties happen.
+ */
+export function greatCircleMiles(a, b) {
+    const R = 6371008.8; // mean Earth radius, m
+    const rad = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * rad;
+    const dLon = (b.lon - a.lon) * rad;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+    return metersToMiles(2 * R * Math.asin(Math.min(1, Math.sqrt(h))));
+}
+
 /** "12.4 mi" style: one decimal, never shows "0.0" for a real miss. */
 export function formatMiles(miles) {
     if (miles > 0 && miles < 0.1) return "<0.1";

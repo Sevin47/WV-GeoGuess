@@ -19,11 +19,12 @@
  * ========================================================================== */
 import { createHostBackend, resolveLiveConfig, siteUrl, assertSessionId } from "./backend.js";
 import { sdkReady, setupWVMap, makePinSymbol, zoomToLonLats } from "./map.js";
-import { createScorer, formatMiles } from "./scoring.js";
-import { scoreRound, selectValidGuesses, playerTag, setNameHidden, hideNameInReveal } from "./round.js";
+import { createScorer, formatMiles, greatCircleMiles } from "./scoring.js";
+import { scoreRound, selectValidGuesses, playerTag, setNameHidden, hideNameInReveal, polygonCentroid } from "./round.js";
 
 const CONFIG = window.ARCGIGUESS_CONFIG;
 const live = resolveLiveConfig(CONFIG.live, location.search);
+const MAX_POINTS = CONFIG.scoring.maxPoints; // only a guess in the hit zone scores this
 const sid = live.sessionId;
 const isAgol = live.backend === "agol";
 
@@ -150,6 +151,7 @@ async function reveal() {
     const alreadyScored = leaderboard?.afterRound >= state.roundNum && rv?.round === state.roundNum;
     if (!alreadyScored) {
         const polygon = scorer.Polygon.fromJSON(lm.geometry);
+        const spot = polygonCentroid(lm.geometry); // the photo location (center of the hit zone)
         ({ reveal: rv, leaderboard } = scoreRound({
             roundNum: state.roundNum,
             landmark: lm,
@@ -158,8 +160,13 @@ async function reveal() {
             graceMs: live.lateGraceMs,
             missedRoundMiles: live.missedRoundMiles,
             prevBoard: state.leaderboard,
-            scoreGuess: (_lm, g) =>
-                scorer.scoreGuess(polygon, new scorer.Point({ longitude: g.lon, latitude: g.lat })),
+            // Points: distance to the hit zone's edge (full points inside it).
+            // Miles shown and used for tie-breaks: distance to the photo spot,
+            // so two "inside" guesses still show who was closer.
+            scoreGuess: (_lm, g) => ({
+                points: scorer.scoreGuess(polygon, new scorer.Point({ longitude: g.lon, latitude: g.lat })).points,
+                miles: greatCircleMiles(spot, g),
+            }),
         }));
     }
     await write({ phase: "reveal", reveal: rv, leaderboard });
@@ -347,7 +354,7 @@ function renderReveal() {
         ...r.top.map(([, name, points, miles], i) =>
             row([
                 span("name", `${i + 1}. ${name}`),
-                span("dist", `${miles === 0 ? "🎯 inside" : `${formatMiles(miles)} mi`} · +${points}`),
+                span("dist", `${points === MAX_POINTS ? "🎯 " : ""}${formatMiles(miles)} mi · +${points}`),
             ])
         )
     );
@@ -462,7 +469,7 @@ async function animateReveal(lm, guesses) {
         { yoffset: -22 }, // below
         { xoffset: 16, yoffset: 8, horizontalAlignment: "left" }, // to the right
     ];
-    r.top.forEach(([tag, name, , miles], i) => {
+    r.top.forEach(([tag, name, points, miles], i) => {
         const g = byTag.get(tag);
         if (!g) return;
         mapEl.graphics.add(
@@ -482,7 +489,7 @@ async function animateReveal(lm, guesses) {
                 geometry: { type: "point", longitude: g.lon, latitude: g.lat },
                 symbol: {
                     type: "text",
-                    text: `${i + 1}. ${name} · ${miles === 0 ? "inside!" : `${formatMiles(miles)} mi`}`,
+                    text: `${i + 1}. ${name} · ${formatMiles(miles)} mi${points === MAX_POINTS ? " 🎯" : ""}`,
                     color: "#0f172a",
                     haloColor: "#ffffff",
                     haloSize: 2.5,

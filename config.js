@@ -89,7 +89,8 @@ window.ARCGIGUESS_CONFIG = {
     //
     // A guess inside the landmark polygon always scores `maxPoints` and counts
     // as "found". Otherwise the distance (in miles) from the guess to the
-    // polygon's edge sets the score:
+    // polygon's edge sets the score (the distance players SEE, and ties, use
+    // the distance to the photo spot at the polygon's center instead):
     //   exponential — round(maxPoints · e^(−miles / scaleMiles)).
     //                 With scaleMiles 25: 5 mi ≈ 819, 10 ≈ 670, 25 ≈ 368,
     //                 50 ≈ 135, 100 ≈ 18.

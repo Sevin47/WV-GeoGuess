@@ -6,6 +6,7 @@ import {
     formatMiles,
     sameSR,
     metersToMiles,
+    greatCircleMiles,
 } from "../js/scoring.js";
 
 const exponential = {
@@ -56,4 +57,14 @@ test("formatMiles", () => {
     assert.equal(formatMiles(0.04), "<0.1");
     assert.equal(formatMiles(0), "0.0");
     assert.equal(metersToMiles(1609.344), 1);
+});
+
+test("greatCircleMiles: Charleston to Morgantown ~126 mi straight line; 0 for the same point", () => {
+    const chs = { lon: -81.6326, lat: 38.3498 };
+    const mgw = { lon: -79.9559, lat: 39.6295 };
+    assert.ok(Math.abs(greatCircleMiles(chs, mgw) - 126.2) < 1, String(greatCircleMiles(chs, mgw)));
+    assert.equal(greatCircleMiles(chs, chs), 0);
+    // 0.3 mi north: 0.3 * 1609.344 m / 111,195 m per degree of latitude
+    const north = { lon: chs.lon, lat: chs.lat + (0.3 * 1609.344) / 111195 };
+    assert.ok(Math.abs(greatCircleMiles(chs, north) - 0.3) < 0.001);
 });

@@ -25,6 +25,7 @@ import { makeZoomable } from "./zoom.js";
 
 const CONFIG = window.ARCGIGUESS_CONFIG;
 const live = resolveLiveConfig(CONFIG.live, location.search);
+const MAX_POINTS = CONFIG.scoring.maxPoints; // only a guess in the hit zone scores this
 const sid = live.sessionId;
 const backend = createPlayerBackend(live);
 
@@ -189,7 +190,7 @@ function renderResult(el) {
     let line = "";
     if (mine) {
         const [points, miles, rank] = mine;
-        headline = miles === 0 ? "🎯 Nailed it!" : `${formatMiles(miles)} mi away`;
+        headline = points === MAX_POINTS ? `🎯 Nailed it! ${formatMiles(miles)} mi away` : `${formatMiles(miles)} mi away`;
         line = [`+${points.toLocaleString()} pts`, `#${rank} this round`, overall && `#${overall} overall`]
             .filter(Boolean)
             .join(" · ");
