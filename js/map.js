@@ -15,9 +15,10 @@ import { siteUrl } from "./backend.js";
 // WGS84 bounding box of West Virginia (from data/wv-boundary.geojson).
 export const WV_BBOX = { xmin: -82.645, ymin: 37.201, xmax: -77.719, ymax: 40.639 };
 
-// Keyless basemaps with no labels (labels would give answers away). A string
-// is a raster tile service; { style } is an Esri vector style whose label,
-// road-shield, and icon layers (every "symbol" layer) are removed at load.
+// Keyless basemaps with no place names (they would give answers away). A
+// string is a raster tile service; { style } is an Esri vector style whose
+// text and icon layers (every "symbol" layer) are removed at load, except
+// route shields when asked (see noLabelStyle).
 // All verified to load anonymously (rasters 2026-09-24, vectors 2026-09-28).
 const VECTOR_STYLE = (id) => `https://www.arcgis.com/sharing/rest/content/items/${id}/resources/styles/root.json`;
 export const BASEMAPS = {
@@ -28,10 +29,17 @@ export const BASEMAPS = {
     imagery: "https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer",
 };
 
-/** Fetch an Esri vector style and drop its text/icon layers (no place names). */
-async function noLabelStyle(url) {
+/**
+ * Fetch an Esri vector style and drop its text/icon layers: place names,
+ * street names, POIs. With `routeShields`, keep the highway shields (I-64,
+ * US 19, WV 2 ...): the "Road/label" symbol layers that draw a shield icon.
+ * Their text is only the route number; street names are separate layers
+ * in the same source-layer with no icon.
+ */
+async function noLabelStyle(url, { routeShields = false } = {}) {
     const style = await (await fetch(url)).json();
-    style.layers = style.layers.filter((l) => l.type !== "symbol");
+    const isShield = (l) => l["source-layer"] === "Road/label" && l.layout?.["icon-image"];
+    style.layers = style.layers.filter((l) => l.type !== "symbol" || (routeShields && isShield(l)));
     return style;
 }
 
@@ -125,6 +133,9 @@ export async function loadWebMap(mapEl, { portalUrl, webMapItemId }) {
  *   basemap      "streets" | "topo" | "hillshade" | "lightgray" | "imagery"
  *   boundaryUrl  GeoJSON of the state outline (site-relative)
  *   countiesUrl  GeoJSON of county lines, or null to skip
+ *   countyLabels label each county with its name
+ *   countyLabelMinScale  only show those labels when zoomed in past this scale
+ *   routeShields keep highway route shields on vector basemaps
  *   dimOutside   fade everything outside WV
  *   constrain    keep the view on WV (see constrainToWV)
  */
@@ -133,6 +144,9 @@ export async function setupWVMap(mapEl, opts = {}) {
         basemap = "streets",
         boundaryUrl = "data/wv-boundary.geojson",
         countiesUrl = "data/wv-counties.geojson",
+        countyLabels = true,
+        countyLabelMinScale = 3000000,
+        routeShields = true,
         dimOutside = true,
         constrain = true,
     } = opts;
@@ -176,6 +190,24 @@ export async function setupWVMap(mapEl, opts = {}) {
                     outline: { color: [0, 40, 85, 0.35], width: 0.75 },
                 },
             },
+            // "Greenbrier County" -> "Greenbrier". Hidden at the statewide
+            // view (too cramped on a phone); they appear once zoomed in past
+            // countyLabelMinScale.
+            labelsVisible: countyLabels,
+            labelingInfo: [
+                {
+                    minScale: countyLabelMinScale,
+                    labelExpressionInfo: { expression: 'Replace($feature.NAME, " County", "")' },
+                    labelPlacement: "always-horizontal",
+                    symbol: {
+                        type: "text",
+                        color: [0, 40, 85, 0.9],
+                        haloColor: [255, 255, 255, 0.9],
+                        haloSize: 1.5,
+                        font: { size: 10, weight: "bold" },
+                    },
+                },
+            ],
         });
         layers.push(countiesLayer);
     }
@@ -199,7 +231,7 @@ export async function setupWVMap(mapEl, opts = {}) {
     const pick = new URLSearchParams(location.search).get("basemap") || basemap;
     const base = BASEMAPS[pick] || BASEMAPS.streets;
     const baseLayer = base.style
-        ? new VectorTileLayer({ style: await noLabelStyle(base.style) })
+        ? new VectorTileLayer({ style: await noLabelStyle(base.style, { routeShields }) })
         : new TileLayer({ url: base });
 
     const map = new Map({

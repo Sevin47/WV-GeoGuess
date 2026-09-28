@@ -264,6 +264,11 @@ window.ARCGIGUESS_CONFIG = {
         basemap: "streets",
         boundaryUrl: "data/wv-boundary.geojson", // Census TIGERweb 2020, generalized
         countiesUrl: "data/wv-counties.geojson", // null to hide county lines
+        countyLabels: true, // county names on the map
+        // ...shown only when zoomed in past 1:3,000,000. A phone's statewide
+        // view is about 1:5,000,000, so one pinch-zoom brings them in.
+        countyLabelMinScale: 3000000,
+        routeShields: true, // highway route numbers (streets/topo basemaps); town and street names stay hidden
         dimOutside: true,
     },
 
