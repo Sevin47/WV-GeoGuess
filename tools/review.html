@@ -13,7 +13,8 @@
                    P  people/plates visible   B  blurry/dark/obstructed
                    N  no clues (too generic)  C  coordinates look wrong
                    U  undo decision           F  show unreviewed only
-                   T  towns first (sort)
+                   T  towns first (sort)      R  rural mix (new rural landmarks,
+                                                 then a second look at rural rejects)
         -->
         <style>
             * { box-sizing: border-box; }
@@ -27,6 +28,7 @@
             .viewer .cropline { position: relative; }
             .viewer .cropline::after { content: ""; position: absolute; left: 0; right: 0; bottom: var(--crop, 0); border-top: 3px dashed #f87171; }
             .viewer .strip { width: 100%; margin-top: 8px; border-radius: 6px; display: block; }
+            .viewer .strip[hidden] { display: none; }
             aside { background: #1e293b; border-radius: 10px; padding: 14px; align-self: start; position: sticky; top: 64px; }
             aside h2 { margin: 0 0 4px; font-size: 18px; }
             .meta { color: #94a3b8; font-size: 13px; }
@@ -61,6 +63,7 @@
             <label><input type="checkbox" id="only-unreviewed" /> Unreviewed only (F)</label>
             <label><input type="checkbox" id="towns-first" checked /> Landmarks &amp; towns first (T)</label>
             <label><input type="checkbox" id="towns-only" /> Towns only</label>
+            <label title="New rural landmark photos, then a second look at rural photos rejected as 'no clues'"><input type="checkbox" id="rural-mix" /> Rural mix (R)</label>
         </header>
         <main>
             <section class="viewer">
@@ -95,6 +98,12 @@
             const $ = (id) => document.getElementById(id);
             const REASONS = { people: "people/plates visible", blurry: "blurry/dark", noclues: "no clues", coords: "wrong coordinates" };
 
+            if (location.protocol === "file:") {
+                // Browsers block file:// pages from reading other files, and saving needs the server.
+                $("title").textContent = "Open this page through the local server";
+                $("meta").textContent = "Run: python scripts/serve.py, then open http://localhost:8000/tools/review.html";
+                throw new Error("review.html must be served over http (python scripts/serve.py)");
+            }
             const cands = await fetch("../work/candidates.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : []));
             let review = await fetch("../work/review.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : {}));
             let i = 0;
@@ -102,7 +111,21 @@
             const inTown = (c) => !!c.town?.urban || !!c.poi || !!c.handpicked;
             // Sort order: hand-picked, then photos facing a landmark, then town photos, then the rest.
             const rank = (c) => (c.handpicked ? 0 : c.poi ? 1 : c.town?.urban ? 2 : 3);
+            // Rural mix: new photos facing rural landmarks (sample landmarks --rural),
+            // then a second look at rural photos rejected as "no clues". A second
+            // rejection is marked `second: true`, so "unreviewed only" skips it.
+            const isRural = (c) => !c.handpicked && (!!c.poi?.rural || !c.town?.urban);
+            const secondLookable = (c) =>
+                !c.poi?.rural && isRural(c) && (review[c.id]?.reason === "noclues" || !!review[c.id]?.second);
+            const secondDone = (c) => !!review[c.id]?.second;
+            function ruralMix() {
+                const unreviewed = $("only-unreviewed").checked;
+                const fresh = cands.filter((c) => c.poi?.rural && (!unreviewed || !review[c.id]));
+                const again = cands.filter((c) => secondLookable(c) && (!unreviewed || !secondDone(c)));
+                return [...fresh, ...again];
+            }
             function visible() {
+                if ($("rural-mix").checked) return ruralMix();
                 let list = $("only-unreviewed").checked ? cands.filter((c) => !review[c.id]) : cands;
                 if ($("towns-only").checked) list = list.filter(inTown);
                 // Town photos (signs, storefronts, landmarks) are far more guessable
@@ -116,7 +139,17 @@
                 const kept = Object.values(review).filter((r) => r.decision === "keep").length;
                 const rejected = Object.values(review).filter((r) => r.decision === "reject").length;
                 $("counts").innerHTML = "";
-                for (const [label, n] of [["kept", kept], ["rejected", rejected], ["left", cands.length - kept - rejected], ["total", cands.length]]) {
+                const counts = [["kept", kept], ["rejected", rejected], ["left", cands.length - kept - rejected], ["total", cands.length]];
+                if ($("rural-mix").checked) {
+                    const fresh = cands.filter((c) => c.poi?.rural);
+                    const again = cands.filter(secondLookable);
+                    counts.push(
+                        ["rural kept", cands.filter((c) => isRural(c) && review[c.id]?.decision === "keep").length],
+                        ["new rural left", fresh.filter((c) => !review[c.id]).length],
+                        ["second look left", again.filter((c) => !secondDone(c)).length]
+                    );
+                }
+                for (const [label, n] of counts) {
                     const s = document.createElement("span");
                     s.append(`${label} `, Object.assign(document.createElement("b"), { textContent: n }));
                     $("counts").append(s);
@@ -133,7 +166,7 @@
                 $("title").textContent = c.name;
                 const t = c.town;
                 const where = c.handpicked ? "⭐ hand-picked"
-                    : c.poi ? `🏛 facing ${c.poi.name}`
+                    : c.poi ? `${c.poi.rural ? "🌲" : "🏛"} facing ${c.poi.name}`
                     : t ? (t.urban ? `🏙 in ${t.name} (pop ${t.pop.toLocaleString()})` : `🌲 rural · ${t.miles} mi from ${t.name}`) : "";
                 $("meta").textContent = [where, c.source, c.captured || "date unknown", c.credit].filter(Boolean).join(" · ");
                 $("coords").textContent = `${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}`;
@@ -159,7 +192,11 @@
                 );
                 const r = review[c.id];
                 $("decision").className = `decision ${r?.decision || ""}`;
-                $("decision").textContent = r ? (r.decision === "keep" ? "✓ Kept" : `✗ Rejected: ${REASONS[r.reason] || r.reason}`) : "Not reviewed";
+                $("decision").textContent = r
+                    ? r.decision === "keep"
+                        ? "✓ Kept"
+                        : `✗ Rejected: ${REASONS[r.reason] || r.reason}${r.second ? " (second look)" : ""}`
+                    : "Not reviewed";
 
                 $("filmstrip").replaceChildren(
                     ...list.map((x) => {
@@ -208,9 +245,21 @@
 
             function decide(d) {
                 const c = cands[i];
-                review[c.id] = d === "keep" ? { decision: "keep" } : { decision: "reject", reason: d };
+                const mix = $("rural-mix").checked;
+                const before = mix ? ruralMix() : [];
+                // A second look keeps the first decision in `prev`, so Undo restores it.
+                const again = mix && secondLookable(c) ? { second: true, prev: review[c.id].prev ?? review[c.id] } : {};
+                review[c.id] = d === "keep" ? { decision: "keep", ...again } : { decision: "reject", reason: d, ...again };
                 save();
-                if ($("only-unreviewed").checked) {
+                if (mix) {
+                    // The decided photo may drop out of the list (kept, or "unreviewed
+                    // only"); then the next one has moved up into its place.
+                    const pos = before.indexOf(c);
+                    const after = ruralMix();
+                    const next = (after.includes(c) ? after[pos + 1] : after[pos]) ?? after[after.length - 1];
+                    if (next) i = cands.indexOf(next);
+                    render();
+                } else if ($("only-unreviewed").checked) {
                     const next = cands.find((x, k) => k > i && !review[x.id]) || cands.find((x) => !review[x.id]);
                     if (next) i = cands.indexOf(next);
                     render();
@@ -221,11 +270,13 @@
             $("prev").addEventListener("click", () => step(-1));
             $("next").addEventListener("click", () => step(1));
             $("undo").addEventListener("click", () => {
-                delete review[cands[i].id];
+                const id = cands[i].id;
+                if (review[id]?.prev) review[id] = review[id].prev;
+                else delete review[id];
                 save();
                 render();
             });
-            for (const id of ["only-unreviewed", "towns-first", "towns-only"]) {
+            for (const id of ["only-unreviewed", "towns-first", "towns-only", "rural-mix"]) {
                 $(id).addEventListener("change", () => {
                     const list = visible();
                     if (list.length && !list.includes(cands[i])) i = cands.indexOf(list[0]);
@@ -239,8 +290,8 @@
                 else if (e.key === "ArrowRight") step(1);
                 else if (e.key === "ArrowLeft") step(-1);
                 else if (k === "u") $("undo").click();
-                else if (k === "f" || k === "t") {
-                    const box = $(k === "f" ? "only-unreviewed" : "towns-first");
+                else if (k === "f" || k === "t" || k === "r") {
+                    const box = $({ f: "only-unreviewed", t: "towns-first", r: "rural-mix" }[k]);
                     box.checked = !box.checked;
                     box.dispatchEvent(new Event("change"));
                 }

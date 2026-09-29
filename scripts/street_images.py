@@ -7,6 +7,7 @@ Street-level round photos for WV GeoGuess: sample -> review -> finalize.
          python scripts/street_images.py sample mapillary --count 150
          python scripts/street_images.py sample mapillary --urban --count 80   # towns only
          python scripts/street_images.py sample landmarks --count 80           # photos facing courthouses, bridges...
+         python scripts/street_images.py sample landmarks --rural --count 40   # ...covered bridges, dams, fire towers outside towns
          python scripts/street_images.py add 123456789 https://www.mapillary.com/app/?pKey=987654321
     2. REVIEW them in the browser (python scripts/serve.py, then open
        http://localhost:8000/tools/review.html) — keep the good ones, reject
@@ -493,6 +494,31 @@ POI_WEIGHTS = [
     ("leisure=stadium", 3), ("amenity=townhall", 3), ("tourism", 3), ("railway=station", 2),
     ("historic", 2), ("building", 2),
 ]
+# --rural: recognizable places OUTSIDE the town cores (covered bridges, big dams,
+# fire towers, country churches, rural county seats' courthouses ...), so the
+# rural rounds still have something to go on.
+OSM_RURAL_RAW = WORK / "osm_rural_raw.json"
+OVERPASS_RURAL_QUERY = """[out:json][timeout:180];
+area["ISO3166-2"="US-WV"][admin_level=4]->.wv;
+(
+  nwr["bridge"="covered"](area.wv);
+  nwr["covered"="yes"]["bridge"]["name"](area.wv);
+  nwr["amenity"="courthouse"](area.wv);
+  nwr["waterway"="dam"]["wikipedia"](area.wv);
+  nwr["man_made"="tower"]["tower:type"="observation"](area.wv);
+  nwr["tourism"~"^(viewpoint|attraction)$"]["name"](area.wv);
+  nwr["historic"~"^(mill|church|building|castle|fort|railway_station|bridge)$"]["name"](area.wv);
+  nwr["amenity"="place_of_worship"]["wikidata"](area.wv);
+  nwr["railway"="station"]["name"](area.wv);
+  nwr["man_made"="bridge"]["name"](area.wv);
+  way["bridge"]["wikidata"](area.wv);
+);
+out center tags;"""
+POI_RURAL_WEIGHTS = [
+    ("bridge=covered", 6), ("covered=yes", 6), ("amenity=courthouse", 4), ("waterway=dam", 3), ("man_made=tower", 3),
+    ("man_made=bridge", 3), ("bridge", 3), ("historic", 3), ("tourism", 2), ("amenity=place_of_worship", 2),
+    ("railway=station", 2),
+]
 POI_SKIP_NAMES = re.compile(r"farm|cemetery|substation|water tower|fire (station|department)|tank", re.I)
 FACING_MAX_DEG = 30  # the photo's camera heading must point within this of the landmark
 FACING_DIST_M = (15, 200)  # ...from this far away
@@ -500,35 +526,41 @@ MAPILLARY_FIELDS = ("id,thumb_2048_url,thumb_original_url,computed_geometry,geom
                     "is_pano,creator,compass_angle,computed_compass_angle")
 
 
-def _poi_kind(tags):
-    for kind, _ in POI_WEIGHTS:
+def _poi_kind(tags, weights=POI_WEIGHTS):
+    for kind, _ in weights:
         key, _, value = kind.partition("=")
         if (value and tags.get(key) == value) or (not value and key in tags):
             return kind
     return None
 
 
-def load_pois(refresh=False):
-    """Named WV landmarks from OpenStreetMap (© OpenStreetMap contributors, ODbL)."""
-    if refresh or not OSM_RAW.exists():
+def load_pois(refresh=False, rural=False, wv=None):
+    """Named WV landmarks from OpenStreetMap (© OpenStreetMap contributors, ODbL).
+    rural=True: the rural query, keeping only places outside the town cores
+    (needs `wv` for the town check)."""
+    raw_path, query, weights = (OSM_RURAL_RAW, OVERPASS_RURAL_QUERY, POI_RURAL_WEIGHTS) if rural else (
+        OSM_RAW, OVERPASS_QUERY, POI_WEIGHTS)
+    if refresh or not raw_path.exists():
         req = urllib.request.Request(
             "https://overpass-api.de/api/interpreter",
-            data=urllib.parse.urlencode({"data": OVERPASS_QUERY}).encode(),
+            data=urllib.parse.urlencode({"data": query}).encode(),
             headers={"User-Agent": "WV-GeoGuess content pipeline (WVDOT GIS Day)"},
         )
         with urllib.request.urlopen(req, timeout=240) as r:
-            OSM_RAW.write_bytes(r.read())
+            raw_path.write_bytes(r.read())
     pois = []
-    for e in json.loads(OSM_RAW.read_text())["elements"]:
+    for e in json.loads(raw_path.read_text(encoding="utf-8"))["elements"]:
         t = e.get("tags", {})
         name = t.get("name")
         pt = e.get("center") or e
         if not name or "lat" not in pt or POI_SKIP_NAMES.search(name):
             continue
-        kind = _poi_kind(t)
+        if rural and wv.town_context(pt["lon"], pt["lat"]).get("urban"):
+            continue
+        kind = _poi_kind(t, weights)
         if kind:
             pois.append({"name": name, "kind": kind, "lat": pt["lat"], "lon": pt["lon"],
-                         "osm": f"{e['type']}/{e['id']}", "wikipedia": t.get("wikipedia")})
+                         "osm": f"{e['type']}/{e['id']}", "wikipedia": t.get("wikipedia"), "rural": rural})
     return pois
 
 
@@ -668,7 +700,7 @@ def landmark_candidate(token, poi, wv, cands, per_cell):
         best, wv,
         label=f"{poi['name']}, {where}" if where else poi["name"],
         fact=f"{blurb} (Wikipedia)" if blurb else None,
-        extra={"poi": {"name": poi["name"], "kind": poi["kind"], "osm": poi["osm"]}},
+        extra={"poi": {"name": poi["name"], "kind": poi["kind"], "osm": poi["osm"], "rural": poi.get("rural", False)}},
         credit_suffix=" · place: © OpenStreetMap contributors",
     )
     if cand and cand["brightness"] < DARK_LIMIT:
@@ -760,12 +792,13 @@ def cmd_sample(args):
         make = lambda r: wvdot_candidate(src, r, wv, cands, args.per_cell)  # noqa: E731
     elif args.source == "landmarks":
         token = os.environ.get("MAPILLARY_TOKEN") or sys.exit("Set MAPILLARY_TOKEN (env var or .env)")
-        pois = load_pois(refresh=args.refresh_places)
-        weights = dict(POI_WEIGHTS)
+        pois = load_pois(refresh=args.refresh_places, rural=args.rural, wv=wv)
+        weights = dict(POI_RURAL_WEIGHTS if args.rural else POI_WEIGHTS)
         # weighted shuffle: courthouses and bridges come up first more often
         order = sorted(pois, key=lambda p: rng.random() ** (1 / weights[p["kind"]]), reverse=True)
         queue_lock = threading.Lock()
-        print(f"Landmarks: {len(pois)} named WV places from OpenStreetMap")
+        print(f"Landmarks: {len(pois)} named WV places from OpenStreetMap"
+              + (f" outside the town cores ({dict(Counter(p['kind'] for p in pois).most_common())})" if args.rural else ""))
 
         def make(_r):
             with queue_lock:
@@ -983,6 +1016,8 @@ def main(argv=None):
     s.add_argument("--workers", type=int, default=4)
     s.add_argument("--urban", action="store_true",
                    help=f"only towns of {URBAN_MIN_POP:,}+ people (more signs, buildings, context)")
+    s.add_argument("--rural", action="store_true",
+                   help="landmarks only: covered bridges, dams, fire towers, country churches... outside the towns")
     s.add_argument("--per-cell", type=int, default=None, help="max candidates per 0.25° cell (default 3; 8 with --urban)")
     s.add_argument("--min-spacing", type=float, default=None, help="miles between candidates (default 2; 0.75 with --urban)")
     s.add_argument("--max-tries", type=int, default=8, help="give up after count × this many attempts")

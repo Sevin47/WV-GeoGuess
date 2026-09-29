@@ -75,6 +75,10 @@ python scripts/street_images.py status
   photo taken 15–200 m away whose **camera heading points at the place** (within 30°). The reveal name
   becomes, for example, "Kanawha County Courthouse, Charleston". The fun fact is the first sentence of
   the place's Wikipedia article, when it has one.
+- **Rural landmarks (`sample landmarks --rural`).** The same camera-facing check, but for places
+  outside the town cores: covered bridges, rural county courthouses, big dams (ones with a Wikipedia
+  article), fire towers, overlooks, historic mills and churches. This gives rural rounds a clue
+  to work from. The list is cached in `work/osm_rural_raw.json`; `--refresh-places` downloads it again.
 - **Hand-picked (`add`).** Browse [mapillary.com/app](https://www.mapillary.com/app), copy a photo's
   URL (it contains `pKey=…`), and run `python scripts/street_images.py add <URL or ID> …`. These are
   marked "keep" automatically. 360° panoramas are skipped because they look warped as flat photos.
@@ -109,12 +113,15 @@ Then open `http://localhost:8000/tools/review.html`.
 | ← / → | Previous / next |
 | U | Undo |
 | F | Show unreviewed only |
+| R | Rural mix: new rural landmark photos, then a second look at rural photos rejected as "no clues" |
 
 - The red dashed line shows where the text strip will be cropped.
 - WVDOT candidates show the original strip under the photo, plus a badge ("OCR agreed 3/5", "Confirmed
   by the next frame", or "Check digits").
 - "Check location on OpenStreetMap" opens the spot so you can sanity-check the place.
 - Decisions save automatically to `work/review.json`.
+- In the rural mix, a second-look decision keeps the first one (`prev`), so **U** restores the
+  original rejection. With **F** on, photos already given a second look are skipped.
 
 **Aim for variety:** towns, rivers, ridges, interstates, and back roads, with some easy ones and some
 hard ones.
