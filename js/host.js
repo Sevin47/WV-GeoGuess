@@ -513,9 +513,10 @@ async function animateReveal(lm, guesses) {
 function renderAdmin() {
     $("admin-session").textContent = `Session ${sid} · ${backend.kind}${isAgol ? " (ArcGIS Online)" : " (this browser only)"}`;
     const sel = $("admin-round");
+    // The panel may be on the projector, so round names (the answers) stay out.
     if (sel.options.length !== rounds.length) {
         sel.replaceChildren(
-            ...rounds.map((r) => new Option(`${r.roundOrder}. ${r.name}${r.setName ? ` (${r.setName})` : ""}`, r.roundOrder))
+            ...rounds.map((r) => new Option(`Round ${r.roundOrder}${r.setName ? ` (${r.setName})` : ""}`, r.roundOrder))
         );
     }
     const rows = state.leaderboard?.rows || [];
