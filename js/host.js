@@ -208,7 +208,7 @@ async function next() {
 
 // --- Timers --------------------------------------------------------------------------------
 // setInterval keeps running in a hidden tab (throttled to ~1/s, which is
-// plenty for a 45 s round).
+// plenty for a 60 s round).
 
 setInterval(() => {
     if (!state) return;

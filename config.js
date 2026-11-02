@@ -211,7 +211,7 @@ window.ARCGIGUESS_CONFIG = {
         jsonFieldLength: 64000,
 
         // Round rules (host.html).
-        roundSeconds: 45, // guessing time per round (brief §8 suggests 45)
+        roundSeconds: 60, // guessing time per round
         lateGraceMs: 3000, // guesses up to this long after the lock still count
         missedRoundMiles: 300, // added to total distance when a player skips a round (tie-breaker)
 

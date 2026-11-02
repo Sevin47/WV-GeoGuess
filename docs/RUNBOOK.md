@@ -29,7 +29,8 @@
 - [ ] **Pick the live rounds** (Landmarks layer → Data tab):
   - `round_order` counts 1, 2, 3 … **across the whole day**. It does not restart each break.
   - `set_name` names each break: "Break 1", "Break 2", …
-  - About 3 rounds per break. Everything else stays in the play-at-home pool.
+  - **2 photos per break**, one break between each of the 6 presentation sessions. Everything else
+    stays in the play-at-home pool.
   - The host refuses to start if a `round_order` repeats.
 - [ ] **Venue test (by Nov 6), in the actual room:**
   - Open `tools/check-agol.html` on a phone, once on venue Wi-Fi and once on cell data. All checks
@@ -66,7 +67,7 @@
 
 1. **Show the host tab.** Keep it visible during a round: Chrome slows timers in hidden tabs, which can
    delay the auto-lock.
-2. **Space** starts the round. The 45 s timer locks it automatically (or press **L**).
+2. **Space** starts the round. The 60 s timer locks it automatically (or press **L**).
 3. **R** (or **→**) reveals: pins, the answer, the top 3, and the fun fact.
 4. **→** goes to the next round. After the break's last round it shows the **leaderboard**, then
    **→** shows the lobby with the QR code for the next break.
